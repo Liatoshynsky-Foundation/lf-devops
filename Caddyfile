@@ -1,0 +1,9 @@
+liatoshynsky.com {
+  root * /usr/share/caddy
+  file_server
+  try_files {path} /temp.html
+}
+
+monitoring.liatoshynsky.com {
+  reverse_proxy uptime-kuma:4173
+}

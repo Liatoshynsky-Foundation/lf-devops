@@ -1,0 +1,8 @@
+# Environment variables
+.env.client
+.env.admin
+!.env.client.example
+!.env.admin.example
+
+# Tailscale
+tailscale/
