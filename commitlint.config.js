@@ -15,6 +15,7 @@ module.exports = {
         'chore', // Other changes that don't modify src or test files
         'revert' // Reverts a previous commit
       ]
-    ]
+    ],
+    'subject-case': [0],
   }
 };

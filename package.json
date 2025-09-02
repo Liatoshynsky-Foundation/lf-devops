@@ -1,19 +1,25 @@
 {
   "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
     "husky": "^9.1.7",
-    "lint-staged": "^15.2.2",
-    "prettier": "^3.3.3"
+    "lint-staged": "^15.5.2",
+    "prettier": "^3.6.2"
   },
   "scripts": {
     "prepare": "husky install"
   },
   "lint-staged": {
-    "*.json": ["prettier --write"],
+    "*.json": [
+      "prettier --write"
+    ],
     "*.{yml,yaml}": [
       "prettier --write",
       "yamllint -c .yamllint.yaml"
     ],
-    "*.md": ["prettier --write"],
+    "*.md": [
+      "prettier --write"
+    ],
     "*.{sh,bash}": [
       "shellcheck --rcfile=.shellcheckrc",
       "prettier --write"
