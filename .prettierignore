@@ -1,0 +1,20 @@
+# Logs
+*.log
+
+# Build
+dist
+build
+node_modules
+
+# Git
+.git
+.github
+.gitlab
+
+# Docker
+*.Dockerfile
+docker-compose.override.yml
+
+# Env
+.env
+.env.*

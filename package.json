@@ -1,0 +1,26 @@
+{
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.2",
+    "prettier": "^3.3.3"
+  },
+  "scripts": {
+    "prepare": "husky install"
+  },
+  "lint-staged": {
+    "*.json": ["prettier --write"],
+    "*.{yml,yaml}": [
+      "prettier --write",
+      "yamllint -c .yamllint.yaml"
+    ],
+    "*.md": ["prettier --write"],
+    "*.{sh,bash}": [
+      "shellcheck --rcfile=.shellcheckrc",
+      "prettier --write"
+    ],
+    "*Dockerfile": [
+      "hadolint --config .hadolint.yaml",
+      "prettier --write"
+    ]
+  }
+}

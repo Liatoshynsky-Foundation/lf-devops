@@ -1,0 +1,32 @@
+# .dockerignore
+
+.git
+.gitignore
+.gitlab
+.github
+.vscode
+.idea
+
+# Dependencies & caches
+node_modules
+**/__pycache__/
+**/*.pyc
+dist
+build
+target
+.tmp
+coverage
+.cache
+
+# Local env / secrets (зберігай їх поза репо)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs
+*.swp
+.DS_Store
+Thumbs.db
+

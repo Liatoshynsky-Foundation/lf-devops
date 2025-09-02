@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+
+echo "👉 Running lint-staged with prettier, yamllint, shellcheck, hadolint..."
+
+npx lint-staged
+RESULT=$?
+
+if [ $RESULT -ne 0 ]; then
+  echo ""
+  echo "❌ Lint-staged failed. Please fix linting/formatting issues before committing."
+  exit 1
+fi
+
+if git diff --cached --quiet; then
+  echo ""
+  echo "⚠️  No changes after lint-staged (nothing to commit)."
+  exit 1
+else
+  echo ""
+  echo "✅ All checks passed. Changes added to commit."
+  exit 0
+fi
