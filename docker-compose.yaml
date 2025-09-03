@@ -1,0 +1,20 @@
+services:
+  client:
+    image: ghcr.io/liatoshynsky-foundation/lf-client:latest
+    container_name: lf-client
+    env_file:
+      - .env
+    expose:
+      - '3000'
+    networks:
+      - webnet
+
+  admin:
+    image: ghcr.io/liatoshynsky-foundation/lf-admin:latest
+    container_name: lf-admin
+    env_file:
+      - .env
+    expose:
+      - '3001'
+    networks:
+      - webnet
