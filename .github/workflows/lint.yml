@@ -1,0 +1,33 @@
+name: Lint & Validation
+
+on:
+  pull_request:
+  push:
+    branches: [ "develop", "main" ]
+
+jobs:
+  lint:
+    name: Run linters
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Prettier
+        run: npm install -g prettier
+
+      - name: Run Prettier check
+        run: prettier --check .
+
+      - name: Install yamllint
+        run: sudo apt-get update && sudo apt-get install -y yamllint
+
+      - name: Run yamllint
+        run: yamllint -c .yamllint.yaml .
+
+      - name: Run Shellcheck
+        run: |
+          sudo apt-get install -y shellcheck
+          find . -type f -name "*.sh" -exec shellcheck -x {} +
+
