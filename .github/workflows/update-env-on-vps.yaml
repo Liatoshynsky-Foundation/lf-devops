@@ -20,7 +20,6 @@ jobs:
           chmod +x sops
           sudo mv sops /usr/local/bin/sops
 
-
       - name: Copy encrypted env file to VPS
         run: scp -o StrictHostKeyChecking=no secrets.env.enc ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/home/${{ secrets.VPS_USER }}/docker/lf-prj/
 
