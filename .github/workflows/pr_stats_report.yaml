@@ -36,7 +36,8 @@ jobs:
             for user in $USERS; do
               CREATED=$(jq --arg u "$user" '[.[] | select(.user.login==$u)] | length' pulls.json)
 
-              REVIEWS=$(jq --arg u "$user" '.[].number as $num | ("https://api.github.com/repos/'"$repo"'/pulls/"+($num|tostring)+"/reviews")' pulls.json)
+              REVIEWS=$(jq -r --arg repo "$repo" '.[].number as $num | "repos/\($repo)/pulls/\($num)/reviews"' pulls.json)
+
               APPROVED=0
               CHANGES=0
               COMMENTED=0
