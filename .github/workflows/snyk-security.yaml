@@ -62,7 +62,7 @@ jobs:
 
       # Also produce SARIF for IaC to surface in GitHub Security
       - name: Snyk IaC test (SARIF)
-        run: snyk iac test --sarif-file-output=./sarif/snyk-iac.sarif || true
+        run: snyk iac test --sarif-file-output=sarif/snyk-iac.sarif || true
 
         # Build the docker image for testing
             # Log in to GitHub Container Registry
