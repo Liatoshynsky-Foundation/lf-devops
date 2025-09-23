@@ -4,7 +4,9 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 0 1 * *"
-
+  pull_request:
+    branches:
+      - feature/999/pr-notifications
 jobs:
   pr-report:
     runs-on: ubuntu-latest
