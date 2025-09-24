@@ -5,7 +5,7 @@ on:
     - cron: "0 12 * * 5" 
   workflow_dispatch:
   pull_request:
-    branch:
+    branches:
       - feature/999/pr-notifications
 
 jobs:
