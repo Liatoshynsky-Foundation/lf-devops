@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   pull_request:
   branch:
-    - feature/999/pr-notification
+    - feature/999/pr-notifications
 
 jobs:
   pr-report:
