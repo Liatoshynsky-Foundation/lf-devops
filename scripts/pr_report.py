@@ -3,6 +3,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import csv
 import io
 import os
+from datetime import datetime, timedelta
+from tabulate import tabulate
 
 
 repos = [
@@ -16,6 +18,9 @@ headers = {
     "Authorization": f"token {github_token}",
     "Accept": "application/vnd.github+json"
 }
+
+one_week_ago = datetime.utcnow() - timedelta(days=7)
+
 
 def fetch_reviews(repo, pr_number):
     url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/reviews"
@@ -44,6 +49,8 @@ for repo in repos:
             break
         pulls.extend(data)
         page += 1
+
+    pulls = [pr for pr in pulls if datetime.strptime(pr['created_at'], "%Y-%m-%dT%H:%M:%SZ") >= one_week_ago]
 
     users = sorted({pr['user']['login'] for pr in pulls})
     
@@ -80,12 +87,7 @@ writer.writerows(rows)
 csv_content = csv_buffer.getvalue()
 
 
-md_table = []
-md_table.append("| " + " | ".join(header) + " |")
-md_table.append("|" + "|".join(["-"*len(h) for h in header]) + "|")
-for row in rows:
-    md_table.append("| " + " | ".join(str(cell) for cell in row) + " |")
-md_content = "\n".join(md_table)
+md_content = tabulate(rows, headers=header, tablefmt="github")
 
 
 files = {
