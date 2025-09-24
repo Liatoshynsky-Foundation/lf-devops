@@ -23,6 +23,6 @@ jobs:
       - name: Run PR report script
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token}}
         run: |
           python your_script.py
