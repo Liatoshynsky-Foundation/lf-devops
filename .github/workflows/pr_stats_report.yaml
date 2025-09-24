@@ -28,4 +28,4 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           GITHUB_TOKEN: ${{ github.token}}
         run: |
-          python your_script.py
+          python scripts/pr_report.py
