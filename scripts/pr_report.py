@@ -91,7 +91,6 @@ md_content = tabulate(rows, headers=header, tablefmt="github")
 
 
 files = {
-    'file': ('pr_report.csv', csv_content),
     'file2': ('pr_report.md', md_content)
 }
 resp = requests.post(discord_webhook, files=files)
