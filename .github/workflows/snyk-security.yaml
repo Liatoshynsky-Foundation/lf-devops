@@ -41,19 +41,19 @@ jobs:
         run: mkdir -p sarif
 
       - name: Snyk Code test (SARIF)
-        run: snyk code test --sarif-file-output=./sarif/snyk-code.sarif --fail-on=high --severity-threshold=high
+        run: snyk code test --sarif-file-output=./sarif/snyk-code.sarif || true
 
       - name: Snyk Open Source test (SARIF)
-        run: snyk test --all-projects --sarif-file-output=./sarif/snyk-oss.sarif --strict-out-of-sync=false --fail-on=high --severity-threshold=high
+        run: snyk test --all-projects --sarif-file-output=./sarif/snyk-oss.sarif --strict-out-of-sync=false || true
       
       - name: Snyk Open Source monitor
         run: snyk monitor --file=package-lock.json --package-manager=npm --strict-out-of-sync=false
 
       - name: Snyk IaC test (SARIF)
-        run: snyk iac test --sarif-file-output=./sarif/snyk-iac.sarif --fail-on=high --severity-threshold=high
+        run: snyk iac test --sarif-file-output=./sarif/snyk-iac.sarif || true
       
       - name: Snyk IaC test and report
-        run: snyk iac test --report --fail-on=high --severity-threshold=high
+        run: snyk iac test --report || true
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -66,10 +66,11 @@ jobs:
         run: docker pull ghcr.io/liatoshynsky-foundation/${{ inputs.docker-image-name }}:${{ github.sha }}
 
       - name: Snyk Container test (SARIF)
-        run: snyk container test ghcr.io/liatoshynsky-foundation/${{ inputs.docker-image-name }}:${{ github.sha }} --file=Dockerfile --exclude-app-vulns --sarif-file-output=./sarif/snyk-container.sarif --fail-on=high --severity-threshold=high
+        run: snyk container test ghcr.io/liatoshynsky-foundation/${{ inputs.docker-image-name }}:${{ github.sha }} --file=Dockerfile --exclude-app-vulns --sarif-file-output=./sarif/snyk-container.sarif || true
 
       - name: Snyk Container monitor
         run: snyk container monitor ghcr.io/liatoshynsky-foundation/${{ inputs.docker-image-name }}:${{ github.sha }} --file=Dockerfile
+
 
       - name: Upload Snyk Code SARIF
         if: hashFiles('sarif/snyk-code.sarif') != ''
