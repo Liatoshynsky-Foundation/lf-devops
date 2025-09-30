@@ -25,12 +25,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
+      
       - name: Set up Snyk CLI
         uses: snyk/actions/setup@806182742461562b67788a64410098c9d9b96adb
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
 
@@ -40,28 +39,24 @@ jobs:
       - name: Prepare SARIF directory
         run: mkdir -p sarif
 
-      # --- SAST (Code) ---
-      # Fails PR if High or Critical code vulnerabilities are found.
       - name: Snyk Code test (SARIF)
         run: snyk code test --fail-on=high --sarif-file-output=./sarif/snyk-code.sarif
 
-      # --- SCA (Open Source) ---
-      # Fails PR if High or Critical dependency vulnerabilities are found.
-      - name: Snyk Open Source test (SARIF)
-        run: snyk test --all-projects --fail-on=high --sarif-file-output=./sarif/snyk-oss.sarif --strict-out-of-sync=false
-      
-      - name: Snyk Open Source monitor
+      - name: Snyk Open Source monitor (lockfile, tolerate mismatch)
         run: snyk monitor --file=package-lock.json --package-manager=npm --strict-out-of-sync=false
 
-      # --- IaC (Infrastructure as Code) ---
-      # Fails PR if High or Critical IaC issues are found.
-      - name: Snyk IaC test (SARIF)
-        run: snyk iac test --fail-on=high --sarif-file-output=./sarif/snyk-iac.sarif
-      
-      - name: Snyk IaC test and report
-        run: snyk iac test --report
 
-      # --- Container Security ---
+      - name: Snyk Open Source test (SARIF, tolerate mismatch)
+        run: snyk test --all-projects --fail-on=high --sarif-file-output=./sarif/snyk-oss.sarif --strict-out-of-sync=false 
+
+
+      - name: Snyk IaC test and report
+        run: snyk iac test --report --fail-on=high
+
+      - name: Snyk IaC test (SARIF)
+        run: snyk iac test --fail-on=high --sarif-file-output=sarif/snyk-iac.sarif
+
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -72,30 +67,38 @@ jobs:
       - name: Pull Docker image
         run: docker pull ghcr.io/liatoshynsky-foundation/${{ inputs.docker-image-name }}:${{ github.sha }}
 
-      # Fails PR if High or Critical container vulnerabilities are found.
-      - name: Snyk Container test (SARIF)
-        run: snyk container test ghcr.io/liatoshynsky-foundation/${{ inputs.docker-image-name }}:${{ github.sha }} --file=Dockerfile --exclude-app-vulns --fail-on=high --sarif-file-output=./sarif/snyk-container.sarif
-
       - name: Snyk Container monitor
         run: snyk container monitor ghcr.io/liatoshynsky-foundation/${{ inputs.docker-image-name }}:${{ github.sha }} --file=Dockerfile
 
-      # --- SARIF Aggregation and Upload ---
-      - name: Install SARIF Multitool
-        run: dotnet tool install --global Sarif.Multitool --version 3.3.5
 
-      - name: Combine existing SARIF files
-        run: |
-          files=$(ls sarif/*.sarif 2>/dev/null || true)
-          if [ -n "$files" ]; then
-            sarif-multitool merge $files --output sarif/snyk-all.sarif
-          else
-            echo "No SARIF files found, creating empty placeholder."
-            echo '{ "version": "2.1.0", "runs": [] }' > sarif/snyk-all.sarif
-          fi
+      - name: Snyk Container test (SARIF)
+        run: snyk container test ghcr.io/liatoshynsky-foundation/${{ inputs.docker-image-name }}:${{ github.sha }} --file=Dockerfile --exclude-app-vulns --fail-on=high --sarif-file-output=./sarif/snyk-container.sarif
 
-      - name: Upload combined Snyk SARIF to GitHub Code Scanning
-        if: always()
+
+      - name: Upload Snyk Code SARIF
+        if: hashFiles('sarif/snyk-code.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: sarif/snyk-all.sarif
-          category: snyk-combined
+          sarif_file: sarif/snyk-code.sarif
+          category: snyk-code
+
+      - name: Upload Snyk OSS SARIF
+        if: hashFiles('sarif/snyk-oss.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sarif/snyk-oss.sarif
+          category: snyk-oss
+
+      - name: Upload Snyk IaC SARIF
+        if: hashFiles('sarif/snyk-iac.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sarif/snyk-iac.sarif
+          category: snyk-iac
+
+      - name: Upload Snyk Container SARIF
+        if: hashFiles('sarif/snyk-container.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sarif/snyk-container.sarif
+          category: snyk-container
