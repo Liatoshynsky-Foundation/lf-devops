@@ -80,15 +80,19 @@ jobs:
         run: snyk container monitor ghcr.io/liatoshynsky-foundation/${{ inputs.docker-image-name }}:${{ github.sha }} --file=Dockerfile
 
       # --- SARIF Aggregation and Upload ---
+      - name: Install SARIF Multitool
+        run: dotnet tool install --global Sarif.Multitool --version 3.3.5
+
       - name: Combine Snyk SARIF files
-        id: combine_sarif
-        uses: snyk/sarif-combine@v2
-        with:
-          sarif_directory: sarif
-          output_file: snyk-all.sarif
+        run: |
+          sarif-multitool merge \
+            sarif/snyk-code.sarif \
+            sarif/snyk-oss.sarif \
+            sarif/snyk-iac.sarif \
+            sarif/snyk-container.sarif \
+            --output sarif/snyk-all.sarif
 
       - name: Upload combined Snyk SARIF to GitHub Code Scanning
-        
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
