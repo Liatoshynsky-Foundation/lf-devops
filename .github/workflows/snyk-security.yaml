@@ -83,14 +83,15 @@ jobs:
       - name: Install SARIF Multitool
         run: dotnet tool install --global Sarif.Multitool --version 3.3.5
 
-      - name: Combine Snyk SARIF files
+      - name: Combine existing SARIF files
         run: |
-          sarif-multitool merge \
-            sarif/snyk-code.sarif \
-            sarif/snyk-oss.sarif \
-            sarif/snyk-iac.sarif \
-            sarif/snyk-container.sarif \
-            --output sarif/snyk-all.sarif
+          files=$(ls sarif/*.sarif 2>/dev/null || true)
+          if [ -n "$files" ]; then
+            sarif-multitool merge $files --output sarif/snyk-all.sarif
+          else
+            echo "No SARIF files found, creating empty placeholder."
+            echo '{ "version": "2.1.0", "runs": [] }' > sarif/snyk-all.sarif
+          fi
 
       - name: Upload combined Snyk SARIF to GitHub Code Scanning
         if: always()
