@@ -1,11 +1,8 @@
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import csv
-import io
 import os
 from datetime import datetime, timedelta
 from tabulate import tabulate
-
 
 repos = [
     "Liatoshynsky-Foundation/lf-client",
@@ -52,7 +49,6 @@ for repo in repos:
 
     pulls = [pr for pr in pulls if datetime.strptime(pr['created_at'], "%Y-%m-%dT%H:%M:%SZ") >= one_week_ago]
 
-    users = sorted({pr['user']['login'] for pr in pulls})
     
     pr_numbers = [pr['number'] for pr in pulls]
     reviews_dict = {}
@@ -61,6 +57,14 @@ for repo in repos:
         for future in as_completed(futures):
             pr_num, reviews = future.result()
             reviews_dict[pr_num] = reviews
+    
+    users = sorted({
+            pr['user']['login'] for pr in pulls
+        } | {
+            r['user']['login']
+            for reviews in reviews_dict.values()
+            for r in reviews
+        })
 
     for user in users:
         created = sum(1 for pr in pulls if pr['user']['login'] == user)
@@ -80,21 +84,13 @@ for repo in repos:
         rows.append([repo, user, created, len(reviewed_prs), approved, changes, commented, dismissed])
 
 
-csv_buffer = io.StringIO()
-writer = csv.writer(csv_buffer)
-writer.writerow(header)
-writer.writerows(rows)
-csv_content = csv_buffer.getvalue()
-
-
 md_content = tabulate(rows, headers=header, tablefmt="github")
 
-
 files = {
-    'file2': ('pr_report.md', md_content)
+    'file': ('pr_report.md', md_content)
 }
 resp = requests.post(discord_webhook, files=files)
 if resp.status_code == 204:
-    print("CSV and Markdown files sent to Discord!")
+    print("Markdown file sent to Discord!")
 else:
-    print(f"Failed to send files: {resp.status_code}, {resp.text}")
+    print(f"Failed to send file: {resp.status_code}, {resp.text}")
