@@ -82,7 +82,7 @@ jobs:
       # --- SARIF Aggregation and Upload ---
       - name: Combine Snyk SARIF files
         id: combine_sarif
-        uses: snyk/sarif-combine@v1
+        uses: snyk/sarif-combine@v2
         with:
           sarif_directory: sarif
           output_file: snyk-all.sarif
