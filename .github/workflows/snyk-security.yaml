@@ -40,21 +40,28 @@ jobs:
       - name: Prepare SARIF directory
         run: mkdir -p sarif
 
+      # --- SAST (Code) ---
+      # Fails PR if High or Critical code vulnerabilities are found.
       - name: Snyk Code test (SARIF)
-        run: snyk code test --sarif-file-output=./sarif/snyk-code.sarif || true
+        run: snyk code test --fail-on=high --sarif-file-output=./sarif/snyk-code.sarif
 
+      # --- SCA (Open Source) ---
+      # Fails PR if High or Critical dependency vulnerabilities are found.
       - name: Snyk Open Source test (SARIF)
-        run: snyk test --all-projects --sarif-file-output=./sarif/snyk-oss.sarif --strict-out-of-sync=false || true
+        run: snyk test --all-projects --fail-on=high --sarif-file-output=./sarif/snyk-oss.sarif --strict-out-of-sync=false
       
       - name: Snyk Open Source monitor
         run: snyk monitor --file=package-lock.json --package-manager=npm --strict-out-of-sync=false
 
+      # --- IaC (Infrastructure as Code) ---
+      # Fails PR if High or Critical IaC issues are found.
       - name: Snyk IaC test (SARIF)
-        run: snyk iac test --sarif-file-output=./sarif/snyk-iac.sarif || true
+        run: snyk iac test --fail-on=high --sarif-file-output=./sarif/snyk-iac.sarif
       
       - name: Snyk IaC test and report
-        run: snyk iac test --report || true
+        run: snyk iac test --report
 
+      # --- Container Security ---
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -65,12 +72,14 @@ jobs:
       - name: Pull Docker image
         run: docker pull ghcr.io/liatoshynsky-foundation/${{ inputs.docker-image-name }}:${{ github.sha }}
 
+      # Fails PR if High or Critical container vulnerabilities are found.
       - name: Snyk Container test (SARIF)
-        run: snyk container test ghcr.io/liatoshynsky-foundation/${{ inputs.docker-image-name }}:${{ github.sha }} --file=Dockerfile --exclude-app-vulns --sarif-file-output=./sarif/snyk-container.sarif || true
+        run: snyk container test ghcr.io/liatoshynsky-foundation/${{ inputs.docker-image-name }}:${{ github.sha }} --file=Dockerfile --exclude-app-vulns --fail-on=high --sarif-file-output=./sarif/snyk-container.sarif
 
       - name: Snyk Container monitor
         run: snyk container monitor ghcr.io/liatoshynsky-foundation/${{ inputs.docker-image-name }}:${{ github.sha }} --file=Dockerfile
 
+      # --- SARIF Aggregation and Upload ---
       - name: Combine Snyk SARIF files
         id: combine_sarif
         uses: snyk/sarif-combine@v1
@@ -79,6 +88,7 @@ jobs:
           output_file: snyk-all.sarif
 
       - name: Upload combined Snyk SARIF to GitHub Code Scanning
+        
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
