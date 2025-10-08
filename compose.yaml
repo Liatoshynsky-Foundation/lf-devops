@@ -1,0 +1,91 @@
+services:
+  client:
+    image: ghcr.io/liatoshynsky-foundation/lf-client:latest
+    pull_policy: always
+    container_name: lf-client
+    env_file: .env.client
+    expose:
+      - "3000"
+    networks:
+      - webnet
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3000/en >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  admin:
+    image: ghcr.io/liatoshynsky-foundation/lf-admin:latest
+    pull_policy: always
+    container_name: lf-admin
+    env_file: .env.admin
+    expose:
+      - "3001"
+    networks:
+      - webnet
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3001/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+  uptime-kuma:
+    image: louislam/uptime-kuma:beta
+    container_name: uptime-kuma
+    restart: always
+    volumes:
+      - uptime-kuma:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "4173"
+    environment:
+      - UPTIME_KUMA_PORT=4173
+    networks:
+      - webnet
+
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./temp-site:/usr/share/caddy
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./caddy_logs:/var/log/caddy
+    depends_on:
+      - client
+      - admin
+      - uptime-kuma
+      - tailscale-authkey
+    networks:
+      - webnet
+  tailscale-authkey:
+    image: tailscale/tailscale:latest
+    container_name: tailscale
+    restart: unless-stopped
+    env_file: .env.tailscale
+    environment:
+      - TS_USERSPACE=false
+    volumes:
+      - ./tailscale/state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    command: tailscaled
+    networks:
+      - webnet
+
+
+volumes:
+  caddy_data:
+  caddy_config:
+  uptime-kuma:
+  tailscale_state:
+
+networks:
+  webnet:

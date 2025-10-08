@@ -1,0 +1,37 @@
+domain.com {
+  @vpn remote_ip ip
+  @public not remote_ip ip
+  handle @vpn {
+    reverse_proxy client:3000
+  }
+  handle @public {
+    root * /usr/share/caddy
+    file_server
+    try_files {path} /index.html
+  }
+}
+
+admin.domain.com {
+  @vpn remote_ip ip
+  @public not remote_ip ip
+  handle @vpn {
+    reverse_proxy admin:3001
+  }
+  handle @public {
+    root * /usr/share/caddy
+    file_server
+    try_files {path} /index.html
+  }
+}
+
+monitoring.domain.com {
+  @vpn remote_ip ip
+  @public not remote_ip ip
+  handle @vpn {
+    reverse_proxy uptime-kuma:4173
+  }
+
+  handle @public {
+    respond "Access restricted" 403
+  }
+}
