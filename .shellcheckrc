@@ -1,0 +1,14 @@
+# ShellCheck configuration file
+# Documentation: https://github.com/koalaman/shellcheck/wiki
+
+# Disable specific warnings
+disable=SC1091,SC2034
+
+# Enable additional checks
+enable=all
+
+# Set shell dialect
+shell=bash
+
+# Exclude patterns
+exclude-dir=.git
