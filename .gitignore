@@ -1,6 +1,8 @@
 # Environment variables
+.env
 .env.client
 .env.admin
+!.env.example
 !.env.client.example
 !.env.admin.example
 

@@ -3,6 +3,10 @@ volumes:
   caddy_config:
   uptime-kuma:
 
+# Environment variables are loaded from .env file
+env_file:
+  - .env
+
 services:
   caddy:
     image: caddy:latest
