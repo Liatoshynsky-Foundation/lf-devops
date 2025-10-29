@@ -1,7 +1,5 @@
 liatoshynsky.com {
-  root * /usr/share/caddy
-  file_server
-  try_files {path} /temp.html
+  reverse_proxy lf-placeholder:80
 }
 
 monitoring.liatoshynsky.com {

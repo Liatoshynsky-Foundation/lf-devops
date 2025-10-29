@@ -3,10 +3,6 @@ volumes:
   caddy_config:
   uptime-kuma:
 
-# Environment variables are loaded from .env file
-env_file:
-  - .env
-
 services:
   caddy:
     image: caddy:latest
@@ -17,7 +13,6 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
-      - ./temp.html:/usr/share/caddy/temp.html
       - caddy_data:/data
       - caddy_config:/config
 
@@ -25,11 +20,15 @@ services:
     image: ghcr.io/liatoshynsky-foundation/lf-client:latest
     pull_policy: always
     container_name: lf-client
-    env_file: .env.client
+    env_file: .env
     expose:
       - "3000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://localhost:3000/en >/dev/null 2>&1 || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O- http://localhost:3000/en >/dev/null 2>&1 || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -39,11 +38,15 @@ services:
     image: ghcr.io/liatoshynsky-foundation/lf-admin:latest
     pull_policy: always
     container_name: lf-admin
-    env_file: .env.admin
+    env_file: .env
     expose:
       - "3001"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://localhost:3001/ >/dev/null 2>&1 || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O- http://localhost:3001/ >/dev/null 2>&1 || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -67,7 +70,12 @@ services:
       - NET_RAW
     devices:
       - "/dev/net/tun:/dev/net/tun"
-    command: ["sh", "-c", "echo 'nameserver 8.8.8.8' > /etc/resolv.conf && echo 'nameserver 1.1.1.1' >> /etc/resolv.conf && tailscaled & sleep 2 && tailscale up --authkey=${TS_AUTHKEY} --hostname=client --accept-dns=true && tailscale serve --https=443 --bg http://127.0.0.1:3000 && tail -f /dev/null"]
+    command:
+      [
+        "sh",
+        "-c",
+        "echo 'nameserver 8.8.8.8' > /etc/resolv.conf && echo 'nameserver 1.1.1.1' >> /etc/resolv.conf && tailscaled & sleep 2 && tailscale up --authkey=${TS_AUTHKEY} --hostname=client --accept-dns=true && tailscale serve --https=443 --bg http://127.0.0.1:3000 && tail -f /dev/null",
+      ]
 
   admin-tailscale:
     image: tailscale/tailscale:stable
@@ -87,7 +95,28 @@ services:
       - NET_RAW
     devices:
       - "/dev/net/tun:/dev/net/tun"
-    command: ["sh", "-c", "echo 'nameserver 8.8.8.8' > /etc/resolv.conf && echo 'nameserver 1.1.1.1' >> /etc/resolv.conf && tailscaled & sleep 2 && tailscale up --authkey=${TS_AUTHKEY} --hostname=admin --accept-dns=true && tailscale serve --https=443 --bg http://127.0.0.1:3001 && tail -f /dev/null"]
+    command:
+      [
+        "sh",
+        "-c",
+        "echo 'nameserver 8.8.8.8' > /etc/resolv.conf && echo 'nameserver 1.1.1.1' >> /etc/resolv.conf && tailscaled & sleep 2 && tailscale up --authkey=${TS_AUTHKEY} --hostname=admin --accept-dns=true && tailscale serve --https=443 --bg http://127.0.0.1:3001 && tail -f /dev/null",
+      ]
+
+  lf-placeholder:
+    image: ghcr.io/liatoshynsky-foundation/lf-placeholder:latest
+    pull_policy: always
+    restart: unless-stopped
+    container_name: lf-placeholder
+    env_file: .env
+    expose:
+      - "80"
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -q -O- http://localhost/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   uptime-kuma:
     image: louislam/uptime-kuma:1
