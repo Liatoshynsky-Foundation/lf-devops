@@ -5,7 +5,7 @@ volumes:
 
 services:
   caddy:
-    image: caddy:latest
+    image: caddy:builder
     restart: unless-stopped
     container_name: caddy
     ports:
@@ -17,6 +17,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     env_file: .env
+    command: sh -c "xcaddy build --with github.com/caddy-dns/cloudflare && /usr/bin/caddy run --config /etc/caddy/Caddyfile"
 
   lf-placeholder:
     image: ghcr.io/liatoshynsky-foundation/lf-placeholder:latest

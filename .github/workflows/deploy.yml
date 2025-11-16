@@ -2,6 +2,9 @@ name: Deploy
 
 on:
   workflow_dispatch:
+  # push:
+  #   branches:
+  #     - main
 
 jobs:
   deploy:
@@ -10,21 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Clone repository on server
-        uses: appleboy/ssh-action@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
-          envs: GITHUB_TOKEN
-          script: |
-            cd ${{ secrets.DEPLOY_PATH }}
-            rm -rf * .[^.]* 2>/dev/null || true
-            git clone --depth 1 --branch main https://${GITHUB_TOKEN}@github.com/${{ github.repository }}.git .
-
-      - name: Setup and decrypt
+      - name: Pull latest changes and decrypt .env files
         uses: appleboy/ssh-action@master
         env:
           ENV_PASSWORD: ${{ secrets.ENV_PASSWORD }}
@@ -35,6 +24,7 @@ jobs:
           envs: ENV_PASSWORD
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
+            git pull
             chmod +x scripts/decrypt-env.sh
             ./scripts/decrypt-env.sh
             chmod 600 .env .env.* 2>/dev/null || true

@@ -1,12 +1,18 @@
-liatoshynsky.com {
-  tls /etc/certs/origin.pem /etc/certs/origin.key
+{
+  email {env.CLOUDFLARE_EMAIL}
+}
 
+liatoshynsky.com {
+  tls {
+    dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+  }
   reverse_proxy lf-placeholder:80
 }
 
 client.liatoshynsky.com {
-  tls /etc/certs/origin.pem /etc/certs/origin.key
-
+  tls {
+    dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+  }
   basic_auth {
   	admin {env.CADDY_BASIC_AUTH_HASH}
   }
@@ -15,8 +21,9 @@ client.liatoshynsky.com {
 }
 
 admin.liatoshynsky.com {
-  tls /etc/certs/origin.pem /etc/certs/origin.key
-
+  tls {
+    dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+  }
   basic_auth {
   	admin {env.CADDY_BASIC_AUTH_HASH}
   }
@@ -25,7 +32,8 @@ admin.liatoshynsky.com {
 }
 
 status.liatoshynsky.com {
-  tls /etc/certs/origin.pem /etc/certs/origin.key
-
+  tls {
+    dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+  }
   reverse_proxy uptime-kuma:4173
 }
