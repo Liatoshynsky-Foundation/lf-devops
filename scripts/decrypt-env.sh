@@ -55,6 +55,8 @@ decrypt_file() {
             if [[ "$value" =~ ^AES::@ ]]; then
                 local decrypted=$(decrypt_value "$value" "$password")
                 if [ $? -eq 0 ]; then
+                    # Escape $ for Docker Compose (replace $ with $$)
+                    decrypted=$(echo "$decrypted" | sed 's/\$/$$/g')
                     echo "${key}=${decrypted}" >> "$temp_output"
                     ((decrypted_count++))
                 else

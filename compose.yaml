@@ -1,11 +1,12 @@
 volumes:
   caddy_data:
   caddy_config:
+  caddy_build:
   uptime-kuma:
 
 services:
   caddy:
-    image: caddy:builder
+    image: caddy:builder-alpine
     restart: unless-stopped
     container_name: caddy
     ports:
@@ -16,6 +17,7 @@ services:
       - ./caddy/certs:/etc/certs:ro
       - caddy_data:/data
       - caddy_config:/config
+      - caddy_build:/tmp
     env_file: .env
     command: sh -c "xcaddy build --with github.com/caddy-dns/cloudflare && /usr/bin/caddy run --config /etc/caddy/Caddyfile"
 
