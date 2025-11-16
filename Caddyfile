@@ -1,7 +1,31 @@
 liatoshynsky.com {
+  tls /etc/certs/origin.pem /etc/certs/origin.key
+
   reverse_proxy lf-placeholder:80
 }
 
-monitoring.liatoshynsky.com {
+client.liatoshynsky.com {
+  tls /etc/certs/origin.pem /etc/certs/origin.key
+
+  basic_auth {
+  	admin {env.CADDY_BASIC_AUTH_HASH}
+  }
+
+  reverse_proxy lf-client:3000
+}
+
+admin.liatoshynsky.com {
+  tls /etc/certs/origin.pem /etc/certs/origin.key
+
+  basic_auth {
+  	admin {env.CADDY_BASIC_AUTH_HASH}
+  }
+
+  reverse_proxy lf-admin:3001
+}
+
+status.liatoshynsky.com {
+  tls /etc/certs/origin.pem /etc/certs/origin.key
+
   reverse_proxy uptime-kuma:4173
 }
