@@ -9,20 +9,27 @@ networks:
 services:
   traefik:
     image: traefik:v3.0
-    restart: unless-stopped
     container_name: traefik
+    restart: unless-stopped
     env_file: .env
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
     volumes:
-      - ./traefik.yaml:/traefik.yaml:ro
-      - traefik_data:/data
+      - ./traefik/ssl-certs/:/ssl-certs
+      - ./traefik/config:/etc/traefik
+      - /etc/localtime:/etc/localtime:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - internal
-    command:
-      - --configfile=/traefik.yaml
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls.certresolver=myresolver"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.domain.id`)"
+      - "traefik.http.routers.traefik.service=api@internal"
 
   lf-placeholder:
     image: ghcr.io/liatoshynsky-foundation/lf-placeholder:latest
