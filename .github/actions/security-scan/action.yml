@@ -1,0 +1,83 @@
+name: "Security Scan"
+description: "Run Snyk security scans and upload SARIF reports"
+
+inputs:
+  snyk-token:
+    description: "Snyk token"
+    required: true
+  scan-type:
+    description: "Type of scan: code, oss, container"
+    required: true
+  container-image:
+    description: "Container image name (for container scan)"
+    required: false
+  dockerfile:
+    description: "Path to Dockerfile (for container scan)"
+    required: false
+    default: "./Dockerfile"
+  package-manager:
+    description: "Package manager (for OSS scan)"
+    required: false
+    default: "npm"
+  lockfile:
+    description: "Path to lockfile (for OSS scan)"
+    required: false
+    default: "package-lock.json"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Snyk CLI
+      uses: snyk/actions/setup@806182742461562b67788a64410098c9d9b96adb
+      env:
+        SNYK_TOKEN: ${{ inputs.snyk-token }}
+
+    - name: Prepare SARIF directory
+      shell: bash
+      run: mkdir -p sarif
+
+    - name: Run Snyk Code scan
+      if: inputs.scan-type == 'code'
+      shell: bash
+      run: snyk code test --sarif-file-output=./sarif/snyk-code.sarif || true
+      env:
+        SNYK_TOKEN: ${{ inputs.snyk-token }}
+
+    - name: Run Snyk OSS scan
+      if: inputs.scan-type == 'oss'
+      shell: bash
+      run: |
+        snyk monitor --file=${{ inputs.lockfile }} --package-manager=${{ inputs.package-manager }} --strict-out-of-sync=false
+        snyk test --all-projects --sarif-file-output=./sarif/snyk-oss.sarif --strict-out-of-sync=false || true
+      env:
+        SNYK_TOKEN: ${{ inputs.snyk-token }}
+
+    - name: Run Snyk Container scan
+      if: inputs.scan-type == 'container'
+      shell: bash
+      run: |
+        snyk container test ${{ inputs.container-image }} --file=${{ inputs.dockerfile }} --exclude-app-vulns --sarif-file-output=./sarif/snyk-container.sarif || true
+        snyk container monitor ${{ inputs.container-image }} --file=${{ inputs.dockerfile }}
+      env:
+        SNYK_TOKEN: ${{ inputs.snyk-token }}
+
+    - name: Upload Snyk Code SARIF
+      if: inputs.scan-type == 'code' && hashFiles('sarif/snyk-code.sarif') != ''
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: sarif/snyk-code.sarif
+        category: snyk-code
+
+    - name: Upload Snyk OSS SARIF
+      if: inputs.scan-type == 'oss' && hashFiles('sarif/snyk-oss.sarif') != ''
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: sarif/snyk-oss.sarif
+        category: snyk-oss
+
+    - name: Upload Snyk Container SARIF
+      if: inputs.scan-type == 'container' && hashFiles('sarif/snyk-container.sarif') != ''
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: sarif/snyk-container.sarif
+        category: snyk-container

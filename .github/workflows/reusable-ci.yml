@@ -1,0 +1,200 @@
+name: Reusable CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node.js version"
+        required: false
+        type: string
+        default: "22"
+      mongodb-version:
+        description: "MongoDB version"
+        required: false
+        type: string
+        default: "8"
+      project-name:
+        description: "Project name"
+        required: true
+        type: string
+      run-tests:
+        description: "Whether to run tests"
+        required: false
+        type: boolean
+        default: true
+      run-security-scan:
+        description: "Whether to run security scans"
+        required: false
+        type: boolean
+        default: false
+      security-scan-on-main-only:
+        description: "Run security scan only on main branch PRs"
+        required: false
+        type: boolean
+        default: true
+      mongodb-connection-string:
+        description: "MongoDB connection string (if not using default setup)"
+        required: false
+        type: string
+    secrets:
+      SNYK_TOKEN:
+        required: false
+
+jobs:
+  lint:
+    name: Run ESLint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js and install dependencies
+        uses: ./.github/actions/setup-node
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Run ESLint
+        run: npm run lint
+
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js and install dependencies
+        uses: ./.github/actions/setup-node
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Run TypeScript type check
+        run: npx tsc --noEmit
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js and install dependencies
+        uses: ./.github/actions/setup-node
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Build project
+        run: npm run build
+
+  tests:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: inputs.run-tests
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js and install dependencies
+        uses: ./.github/actions/setup-node
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Setup MongoDB
+        if: inputs.mongodb-connection-string == ''
+        uses: ./.github/actions/setup-mongodb
+        with:
+          mongodb-version: ${{ inputs.mongodb-version }}
+
+      - name: Run Tests
+        env:
+          NODE_OPTIONS: --max_old_space_size=4096
+          MONGO_URL: ${{ inputs.mongodb-connection-string != '' && inputs.mongodb-connection-string || 'mongodb://admin:password@mongodb:27017/mongodb' }}
+        run: npm run test
+
+  build-docker:
+    name: Build and Test Docker Container
+    runs-on: ubuntu-latest
+    needs: [lint, type-check, build]
+    if: always() && (needs.lint.result == 'success' && needs.type-check.result == 'success' && needs.build.result == 'success')
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        uses: ./.github/actions/docker-build
+        with:
+          context: .
+          tags: ${{ inputs.project-name }}:test
+          load: "true"
+
+      - name: Run Security Scan (Container)
+        if: inputs.run-security-scan && (!inputs.security-scan-on-main-only || (github.event_name == 'pull_request' && github.base_ref == 'main'))
+        uses: ./.github/actions/security-scan
+        with:
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+          scan-type: container
+          container-image: ${{ inputs.project-name }}:test
+
+      - name: Cleanup test image
+        if: always()
+        run: docker rmi ${{ inputs.project-name }}:test || true
+
+  security-scan:
+    name: Run Security Scan
+    runs-on: ubuntu-latest
+    needs: [lint]
+    if: inputs.run-security-scan && (!inputs.security-scan-on-main-only || (github.event_name == 'pull_request' && github.base_ref == 'main'))
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js and install dependencies
+        uses: ./.github/actions/setup-node
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Run Security Scan (Code)
+        uses: ./.github/actions/security-scan
+        with:
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+          scan-type: code
+
+      - name: Run Security Scan (OSS)
+        uses: ./.github/actions/security-scan
+        with:
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+          scan-type: oss

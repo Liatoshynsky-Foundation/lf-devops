@@ -139,6 +139,108 @@ install: ## Check if all dependencies are installed
 deploy: validate up ## Deploy project (validate + start)
 	@echo "$(GREEN)✓ Deployment completed$(NC)"
 
+deploy-applications: pull-applications ## Deploy applications with specific tags (usage: make deploy-applications ADMIN_TAG=stage CLIENT_TAG=stage SERVICES=admin,client)
+	@echo "$(GREEN)Deploying applications...$(NC)"
+	@if [ -z "$(SERVICES)" ] || [ "$(SERVICES)" = "all" ]; then \
+		SERVICES_TO_DEPLOY="admin client lf-placeholder"; \
+	else \
+		SERVICES_TO_DEPLOY=$(echo "$(SERVICES)" | sed 's/placeholder/lf-placeholder/g'); \
+	fi; \
+	ADMIN_TAG=$${ADMIN_TAG:-stage} CLIENT_TAG=$${CLIENT_TAG:-stage} PLACEHOLDER_TAG=$${PLACEHOLDER_TAG:-latest} \
+		docker compose -f $(COMPOSE_FILE) stop $$SERVICES_TO_DEPLOY || true; \
+	ADMIN_TAG=$${ADMIN_TAG:-stage} CLIENT_TAG=$${CLIENT_TAG:-stage} PLACEHOLDER_TAG=$${PLACEHOLDER_TAG:-latest} \
+		docker compose -f $(COMPOSE_FILE) rm -f $$SERVICES_TO_DEPLOY || true; \
+	ADMIN_TAG=$${ADMIN_TAG:-stage} CLIENT_TAG=$${CLIENT_TAG:-stage} PLACEHOLDER_TAG=$${PLACEHOLDER_TAG:-latest} \
+		docker compose -f $(COMPOSE_FILE) up -d $$SERVICES_TO_DEPLOY
+	@echo "$(GREEN)✓ Applications deployed$(NC)"
+
+deploy-infrastructure: ## Deploy infrastructure services only
+	@echo "$(GREEN)Deploying infrastructure...$(NC)"
+	@docker compose -f $(COMPOSE_FILE) pull caddy uptime-kuma lf-placeholder || true
+	@docker compose -f $(COMPOSE_FILE) up -d caddy uptime-kuma lf-placeholder
+	@echo "$(GREEN)✓ Infrastructure deployed$(NC)"
+
+deploy-all: deploy-infrastructure ## Deploy everything (infrastructure + applications)
+	@if [ -n "$(ADMIN_TAG)" ] || [ -n "$(CLIENT_TAG)" ] || [ -n "$(PLACEHOLDER_TAG)" ]; then \
+		$(MAKE) deploy-applications ADMIN_TAG="$${ADMIN_TAG:-stage}" CLIENT_TAG="$${CLIENT_TAG:-stage}" PLACEHOLDER_TAG="$${PLACEHOLDER_TAG:-latest}"; \
+	else \
+		$(MAKE) deploy-applications; \
+	fi
+
+pull-applications: ## Pull application images with specific tags
+	@echo "$(GREEN)Pulling application images...$(NC)"
+	@if [ -n "$(ADMIN_TAG)" ]; then \
+		echo "Pulling admin:$(ADMIN_TAG)"; \
+		docker pull ghcr.io/liatoshynsky-foundation/lf-admin:$(ADMIN_TAG) || \
+		docker pull ghcr.io/liatoshynsky-foundation/lf-admin:latest; \
+		docker tag ghcr.io/liatoshynsky-foundation/lf-admin:$(ADMIN_TAG) ghcr.io/liatoshynsky-foundation/lf-admin:latest 2>/dev/null || \
+		docker tag ghcr.io/liatoshynsky-foundation/lf-admin:latest ghcr.io/liatoshynsky-foundation/lf-admin:latest; \
+	fi
+	@if [ -n "$(CLIENT_TAG)" ]; then \
+		echo "Pulling client:$(CLIENT_TAG)"; \
+		docker pull ghcr.io/liatoshynsky-foundation/lf-client:$(CLIENT_TAG) || \
+		docker pull ghcr.io/liatoshynsky-foundation/lf-client:latest; \
+		docker tag ghcr.io/liatoshynsky-foundation/lf-client:$(CLIENT_TAG) ghcr.io/liatoshynsky-foundation/lf-client:latest 2>/dev/null || \
+		docker tag ghcr.io/liatoshynsky-foundation/lf-client:latest ghcr.io/liatoshynsky-foundation/lf-client:latest; \
+	fi
+	@if [ -n "$(PLACEHOLDER_TAG)" ]; then \
+		echo "Pulling placeholder:$(PLACEHOLDER_TAG)"; \
+		docker pull ghcr.io/liatoshynsky-foundation/lf-placeholder:$(PLACEHOLDER_TAG) || \
+		docker pull ghcr.io/liatoshynsky-foundation/lf-placeholder:latest; \
+		docker tag ghcr.io/liatoshynsky-foundation/lf-placeholder:$(PLACEHOLDER_TAG) ghcr.io/liatoshynsky-foundation/lf-placeholder:latest 2>/dev/null || \
+		docker tag ghcr.io/liatoshynsky-foundation/lf-placeholder:latest ghcr.io/liatoshynsky-foundation/lf-placeholder:latest; \
+	fi
+	@echo "$(GREEN)✓ Application images pulled$(NC)"
+
+health-check: ## Perform health checks for services
+	@echo "$(GREEN)Performing health checks...$(NC)"
+	@for service in admin client lf-placeholder; do \
+		case $$service in \
+			admin) \
+				URL="http://localhost:3001/" \
+				CONTAINER="lf-admin" \
+				;; \
+			client) \
+				URL="http://localhost:3000/en" \
+				CONTAINER="lf-client" \
+				;; \
+			lf-placeholder) \
+				URL="http://localhost/" \
+				CONTAINER="lf-placeholder" \
+				;; \
+		esac; \
+		for i in 1 2 3 4 5; do \
+			if docker exec $$CONTAINER wget -q -O- $$URL >/dev/null 2>&1; then \
+				echo "$(GREEN)✓ $$service health check passed (attempt $$i)$(NC)"; \
+				break; \
+			else \
+				echo "$(YELLOW)$$service health check failed (attempt $$i)$(NC)"; \
+				if [ $$i -eq 5 ]; then \
+					echo "$(RED)✗ $$service health check failed after 5 attempts$(NC)"; \
+					exit 1; \
+				fi; \
+				sleep 10; \
+			fi; \
+		done; \
+	done
+	@echo "$(GREEN)✓ All health checks passed$(NC)"
+
+check-logs: ## Check logs for errors
+	@echo "$(GREEN)Checking logs for errors...$(NC)"
+	@for service in admin client lf-placeholder; do \
+		if docker compose -f $(COMPOSE_FILE) logs $$service | tail -20 | grep -i "error\|fatal\|exception"; then \
+			echo "$(RED)Errors found in $$service logs$(NC)"; \
+			docker compose -f $(COMPOSE_FILE) logs $$service | tail -50; \
+			exit 1; \
+		fi; \
+	done
+	@echo "$(GREEN)✓ No errors found in logs$(NC)"
+
+cleanup-images: ## Clean up old Docker images
+	@echo "$(GREEN)Cleaning up old images...$(NC)"
+	@docker image prune -f
+	@echo "$(GREEN)✓ Cleanup completed$(NC)"
+
 rebuild: down up ## Rebuild and start services
 
 # Prevent Make from trying to build files with these names
