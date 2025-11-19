@@ -3,7 +3,7 @@
 # Variables
 COMPOSE_FILE := compose.yaml
 SCRIPTS_DIR := scripts
-ENV_FILES := .env.traefik .env.admin .env.client
+ENV_FILES := .env .env.admin .env.client
 
 # Colors for output
 GREEN := \033[0;32m

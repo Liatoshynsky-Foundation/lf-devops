@@ -43,7 +43,6 @@ The infrastructure consists of the following services:
 - **Image**: `ghcr.io/liatoshynsky-foundation/lf-placeholder:latest`
 - **Port**: 80 (internal)
 - **Purpose**: Placeholder/main website
-- **Environment**: `.env`
 
 ### 3. lf-client
 - **Container**: `lf-client`
@@ -72,8 +71,7 @@ The infrastructure consists of the following services:
 
 The project uses encrypted environment files for secure secret management:
 
-- `.env` - Main environment variables (used by lf-placeholder)
-- `.env.traefik` - Traefik reverse proxy environment variables (Cloudflare credentials, basic auth hash)
+- `.env` - Traefik reverse proxy environment variables (Cloudflare credentials, basic auth hash)
 - `.env.client` - Client application environment variables
 - `.env.admin` - Admin panel environment variables
 
@@ -247,8 +245,9 @@ SSL certificates are automatically managed by Traefik using Let's Encrypt with D
 - No manual certificate management required
 
 **Required configuration**:
-- `CLOUDFLARE_EMAIL` in `.env.traefik` - Email for Let's Encrypt
-- `CLOUDFLARE_API_TOKEN` in `.env.traefik` - Cloudflare API token with DNS edit permissions
+- `CLOUDFLARE_EMAIL` in `.env` - Email for Let's Encrypt
+- `CLOUDFLARE_API_TOKEN` in `.env` - Cloudflare API token with DNS edit permissions
+- `TRAEFIK_BASIC_AUTH_HASH` in `.env` - Basic authentication hash for protected routes
 
 ## Monitoring
 
@@ -297,7 +296,7 @@ make encrypt .env
 
 2. **Verify Cloudflare credentials**:
    ```bash
-   make decrypt .env.traefik
+   make decrypt .env
    # Check CLOUDFLARE_EMAIL and CLOUDFLARE_API_TOKEN
    ```
 

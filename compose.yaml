@@ -11,7 +11,7 @@ services:
     image: traefik:v3.0
     restart: unless-stopped
     container_name: traefik
-    env_file: .env.traefik
+    env_file: .env
     ports:
       - "80:80"
       - "443:443"

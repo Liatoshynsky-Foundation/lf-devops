@@ -10,7 +10,7 @@ set -e
 # ============================================================================
 # Configuration
 # ============================================================================
-ENV_FILES=(.env.traefik .env.admin .env.client)
+ENV_FILES=(.env .env.admin .env.client)
 
 EDITOR="${EDITOR:-${VISUAL:-nano}}"
 

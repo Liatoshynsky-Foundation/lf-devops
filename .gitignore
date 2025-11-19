@@ -1,7 +1,7 @@
 # Environment variables
 # .env files are committed but MUST contain only encrypted values (AES::@...@)
 # Pre-commit hook will check this automatically
-!.env.traefik
+!.env
 !.env.client
 !.env.admin
 
