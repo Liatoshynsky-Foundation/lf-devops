@@ -6,6 +6,14 @@
 
 set -e
 
+# ============================================================================
+# Configuration
+# ============================================================================
+ENV_FILES=(.env.traefik .env.admin .env.client)
+
+# ============================================================================
+# Setup
+# ============================================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
@@ -17,9 +25,8 @@ verify_password() {
     local input_file="$1"
     local password="$2"
 
-    [ ! -f "$input_file" ] && return 0  # File doesn't exist, skip verification
+    [ ! -f "$input_file" ] && return 0
 
-    # Find first encrypted value
     while IFS= read -r line || [ -n "$line" ]; do
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
 
@@ -27,21 +34,19 @@ verify_password() {
             local value="${BASH_REMATCH[2]}"
 
             if [[ "$value" =~ ^AES::@ ]]; then
-                # Try to decrypt this value (suppress output)
                 local test_decrypt=$(decrypt_value "$value" "$password" 2>/dev/null)
                 local decrypt_status=$?
-                # Check if decryption succeeded and result is not empty
                 if [ $decrypt_status -ne 0 ] || [ -z "$test_decrypt" ]; then
                     echo -e "${RED}Error: Incorrect password! Cannot decrypt values in $input_file${NC}" >&2
                     echo -e "${YELLOW}Please check your password and try again.${NC}" >&2
                     return 1
                 fi
-                return 0  # Password is correct
+                return 0
             fi
         fi
     done < "$input_file"
 
-    return 0  # No encrypted values found, password check not needed
+    return 0
 }
 
 # Decrypt a single value
@@ -69,12 +74,11 @@ decrypt_value() {
 # Decrypt a file (in-place, overwrites original)
 decrypt_file() {
     local input_file="$1"
-    local password="$2"  # Password passed as parameter
-    local output_file="$input_file"  # Work in-place
+    local password="$2"
+    local output_file="$input_file"
 
     [ ! -f "$input_file" ] && echo -e "${RED}Error: $input_file not found${NC}" >&2 && return 1
 
-    # Verify password before starting decryption
     if ! verify_password "$input_file" "$password"; then
         return 1
     fi
@@ -124,9 +128,6 @@ decrypt_file() {
 }
 
 # Main
-ENV_FILES=(.env .env.admin .env.client)
-
-# Get password once for all files
 PASSWORD=$(get_password "decryption") || exit 1
 
 if [ $# -eq 0 ]; then

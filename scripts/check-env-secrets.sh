@@ -6,6 +6,14 @@
 
 set -e
 
+# ============================================================================
+# Configuration
+# ============================================================================
+ENV_FILES=(.env.traefik .env.admin .env.client)
+
+# ============================================================================
+# Setup
+# ============================================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
@@ -20,15 +28,12 @@ check_file() {
     [ ! -f "$file" ] && return 0
 
     while IFS= read -r line || [ -n "$line" ]; do
-        # Skip empty lines and comments
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
 
-        # Check if line matches KEY=VALUE pattern
         if [[ "$line" =~ ^([^=]+)=(.*)$ ]]; then
             local key="${BASH_REMATCH[1]}"
             local value="${BASH_REMATCH[2]}"
 
-            # Check if value is NOT encrypted
             if [[ ! "$value" =~ ^AES::@ ]]; then
                 echo -e "${RED}✗ Unencrypted secret found in $file: $key${NC}" >&2
                 ((errors++))
@@ -40,7 +45,6 @@ check_file() {
 }
 
 # Main
-ENV_FILES=(.env .env.admin .env.client)
 total_errors=0
 
 if [ $# -eq 0 ]; then

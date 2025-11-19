@@ -6,6 +6,15 @@
 
 set -e
 
+# ============================================================================
+# Configuration
+# ============================================================================
+# List of .env files to process
+ENV_FILES=(.env.traefik .env.admin .env.client)
+
+# ============================================================================
+# Setup
+# ============================================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
@@ -73,8 +82,6 @@ encrypt_file() {
 }
 
 # Main
-ENV_FILES=(.env .env.admin .env.client)
-
 # Get password once for all files
 PASSWORD=$(get_password "encryption") || exit 1
 

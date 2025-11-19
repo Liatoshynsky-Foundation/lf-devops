@@ -3,7 +3,7 @@
 # Variables
 COMPOSE_FILE := compose.yaml
 SCRIPTS_DIR := scripts
-ENV_FILES := .env .env.admin .env.client
+ENV_FILES := .env.traefik .env.admin .env.client
 
 # Colors for output
 GREEN := \033[0;32m
@@ -40,8 +40,8 @@ restart: ## Restart all services
 logs: ## Show logs for all services
 	docker compose -f $(COMPOSE_FILE) logs -f
 
-logs-caddy: ## Show Caddy logs
-	docker compose -f $(COMPOSE_FILE) logs -f caddy
+logs-traefik: ## Show Traefik logs
+	docker compose -f $(COMPOSE_FILE) logs -f traefik
 
 logs-client: ## Show client application logs
 	docker compose -f $(COMPOSE_FILE) logs -f lf-client
