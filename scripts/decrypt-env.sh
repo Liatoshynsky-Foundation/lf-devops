@@ -19,6 +19,7 @@ verify_password() {
 
     [ ! -f "$input_file" ] && return 0  # File doesn't exist, skip verification
 
+    local has_encrypted=0
     # Find first encrypted value
     while IFS= read -r line || [ -n "$line" ]; do
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
@@ -27,6 +28,7 @@ verify_password() {
             local value="${BASH_REMATCH[2]}"
 
             if [[ "$value" =~ ^AES::@ ]]; then
+                has_encrypted=1
                 # Try to decrypt this value (suppress output)
                 local test_decrypt=$(decrypt_value "$value" "$password" 2>/dev/null)
                 local decrypt_status=$?
@@ -41,7 +43,9 @@ verify_password() {
         fi
     done < "$input_file"
 
-    return 0  # No encrypted values found, password check not needed
+    # If we found encrypted values but couldn't verify, that's an error
+    # But if no encrypted values found, that's OK (file might already be decrypted)
+    return 0
 }
 
 # Decrypt a single value
@@ -79,7 +83,8 @@ decrypt_file() {
         return 1
     fi
 
-    local temp_output=$(mktemp)
+    local temp_output
+    temp_output=$(mktemp) || { echo -e "${RED}Error: Cannot create temp file${NC}" >&2; return 1; }
     local decrypted_count=0
     local errors=0
 
@@ -90,14 +95,16 @@ decrypt_file() {
             local key="${BASH_REMATCH[1]}" value="${BASH_REMATCH[2]}"
 
             if [[ "$value" =~ ^AES::@ ]]; then
-                local decrypted=$(decrypt_value "$value" "$password")
-                if [ $? -eq 0 ]; then
+                local decrypted
+                decrypted=$(decrypt_value "$value" "$password" 2>&1)
+                local decrypt_status=$?
+                if [ $decrypt_status -eq 0 ] && [ -n "$decrypted" ]; then
                     echo "${key}=${decrypted}" >> "$temp_output"
-                    ((decrypted_count++))
+                    ((decrypted_count++)) || true
                 else
-                    echo -e "${RED}✗ Failed to decrypt: $key (this should not happen after password verification)${NC}" >&2
+                    echo -e "${RED}✗ Failed to decrypt: $key${NC}" >&2
                     echo "$line" >> "$temp_output"
-                    ((errors++))
+                    ((errors++)) || true
                 fi
             else
                 echo "$line" >> "$temp_output"
@@ -107,7 +114,7 @@ decrypt_file() {
         fi
     done < "$input_file"
 
-    mv "$temp_output" "$output_file"
+    mv "$temp_output" "$output_file" || { echo -e "${RED}Error: Cannot move temp file to $output_file${NC}" >&2; return 1; }
 
     if [ $errors -gt 0 ]; then
         echo -e "${RED}✗ Decryption completed with errors: $input_file → $output_file${NC}" >&2
@@ -132,17 +139,37 @@ PASSWORD=$(get_password "decryption") || exit 1
 if [ $# -eq 0 ]; then
     echo "Decrypting all .env files..."
     decrypted=0
+    failed=0
     for file in "${ENV_FILES[@]}"; do
         if [ -f "$file" ]; then
-            if decrypt_file "$file" "$PASSWORD"; then
-                ((decrypted++))
+            # Use set +e to continue on errors, so all files are processed
+            set +e
+            decrypt_file "$file" "$PASSWORD"
+            decrypt_result=$?
+            set -e
+            if [ $decrypt_result -eq 0 ]; then
+                # Check if file still has encrypted values (might have been already decrypted)
+                if grep -q "^[^=]*=AES::@" "$file" 2>/dev/null; then
+                    # Still has encrypted values, decryption failed
+                    ((failed++)) || true
+                else
+                    ((decrypted++)) || true
+                fi
+            else
+                ((failed++)) || true
             fi
         else
             echo -e "${YELLOW}Warning: $file not found, skipping${NC}" >&2
         fi
     done
-    [ $decrypted -eq 0 ] && echo -e "${RED}No files decrypted${NC}" >&2 && exit 1
-    echo -e "${GREEN}Successfully decrypted $decrypted file(s)${NC}"
+    if [ $decrypted -eq 0 ] && [ $failed -gt 0 ]; then
+        echo -e "${RED}No files decrypted. Please check your password.${NC}" >&2
+        exit 1
+    elif [ $decrypted -eq 0 ]; then
+        echo -e "${YELLOW}No files needed decryption${NC}" >&2
+    else
+        echo -e "${GREEN}Successfully decrypted $decrypted file(s)${NC}"
+    fi
 else
     [[ ! "$1" =~ ^\.env(\.[a-zA-Z0-9_-]+)?$ ]] && \
         echo -e "${RED}Error: File must be .env or .env.* format${NC}" >&2 && exit 1
