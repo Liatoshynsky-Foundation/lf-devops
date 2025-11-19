@@ -7,14 +7,21 @@
 
 set -e
 
+# ============================================================================
+# Configuration
+# ============================================================================
+ENV_FILES=(.env .env.admin .env.client)
+
+EDITOR="${EDITOR:-${VISUAL:-nano}}"
+
+# ============================================================================
+# Setup
+# ============================================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 source "$SCRIPT_DIR/env-crypto.sh"
-
-# Determine editor
-EDITOR="${EDITOR:-${VISUAL:-nano}}"
 
 # Edit a file interactively
 edit_file_interactive() {
@@ -22,19 +29,15 @@ edit_file_interactive() {
     local password="$2"
     local temp_decrypted=$(mktemp)
 
-    # Decrypt to temp file
     if ! decrypt_file_to_temp "$file" "$password" "$temp_decrypted"; then
         rm -f "$temp_decrypted"
         return 1
     fi
 
-    # Get original modification time
     local original_mtime=$(stat -f "%m" "$temp_decrypted" 2>/dev/null || stat -c "%Y" "$temp_decrypted" 2>/dev/null || echo "0")
 
-    # Edit the file
     $EDITOR "$temp_decrypted"
 
-    # Check if file was modified
     local new_mtime=$(stat -f "%m" "$temp_decrypted" 2>/dev/null || stat -c "%Y" "$temp_decrypted" 2>/dev/null || echo "0")
 
     if [ "$original_mtime" = "$new_mtime" ]; then
@@ -43,7 +46,6 @@ edit_file_interactive() {
         return 0
     fi
 
-    # Re-encrypt
     if ! encrypt_file_from_temp "$temp_decrypted" "$file" "$password"; then
         rm -f "$temp_decrypted"
         return 1
@@ -61,7 +63,6 @@ set_value() {
     local password="$3"
     local temp_decrypted=$(mktemp)
 
-    # Parse KEY=value
     if [[ ! "$key_value" =~ ^([^=]+)=(.*)$ ]]; then
         echo -e "${RED}Error: Invalid format. Use KEY=value${NC}" >&2
         rm -f "$temp_decrypted"
@@ -71,13 +72,11 @@ set_value() {
     local key="${BASH_REMATCH[1]}"
     local new_value="${BASH_REMATCH[2]}"
 
-    # Decrypt to temp file
     if ! decrypt_file_to_temp "$file" "$password" "$temp_decrypted"; then
         rm -f "$temp_decrypted"
         return 1
     fi
 
-    # Update or add the key
     local temp_updated=$(mktemp)
     local key_found=0
 
@@ -95,7 +94,6 @@ set_value() {
         fi
     done < "$temp_decrypted"
 
-    # Add key if not found
     if [ $key_found -eq 0 ]; then
         echo "${key}=${new_value}" >> "$temp_updated"
         echo -e "${YELLOW}Key '$key' not found, adding new entry${NC}"
@@ -103,7 +101,6 @@ set_value() {
         echo -e "${GREEN}Updated key: $key${NC}"
     fi
 
-    # Re-encrypt
     if ! encrypt_file_from_temp "$temp_updated" "$file" "$password"; then
         rm -f "$temp_decrypted" "$temp_updated"
         return 1
@@ -114,7 +111,6 @@ set_value() {
     return 0
 }
 
-# Decrypt file to temporary location (non-destructive)
 decrypt_file_to_temp() {
     local input_file="$1"
     local password="$2"
@@ -122,7 +118,6 @@ decrypt_file_to_temp() {
 
     [ ! -f "$input_file" ] && echo -e "${RED}Error: $input_file not found${NC}" >&2 && return 1
 
-    # Verify password first
     if ! verify_password "$input_file" "$password"; then
         return 1
     fi
@@ -156,7 +151,6 @@ decrypt_file_to_temp() {
     return 0
 }
 
-# Encrypt file from temporary location
 encrypt_file_from_temp() {
     local input_file="$1"
     local output_file="$2"
@@ -193,9 +187,6 @@ encrypt_file_from_temp() {
 }
 
 # Main
-ENV_FILES=(.env .env.admin .env.client)
-
-# Get password once
 PASSWORD=$(get_password "decryption") || exit 1
 
 if [ $# -eq 0 ]; then
@@ -206,14 +197,12 @@ if [ $# -eq 0 ]; then
     echo "Available files: ${ENV_FILES[*]}"
     exit 1
 elif [ $# -eq 1 ]; then
-    # Interactive edit
     local file="$1"
     [[ ! "$file" =~ ^\.env(\.[a-zA-Z0-9_-]+)?$ ]] && \
         echo -e "${RED}Error: File must be .env or .env.* format${NC}" >&2 && exit 1
     [ ! -f "$file" ] && echo -e "${RED}Error: $file not found${NC}" >&2 && exit 1
     edit_file_interactive "$file" "$PASSWORD"
 elif [ $# -eq 2 ]; then
-    # Set specific value
     local file="$1"
     local key_value="$2"
     [[ ! "$file" =~ ^\.env(\.[a-zA-Z0-9_-]+)?$ ]] && \

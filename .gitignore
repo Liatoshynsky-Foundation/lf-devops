@@ -5,5 +5,5 @@
 !.env.client
 !.env.admin
 
-# Caddy
-caddy/certs/**
+# Traefik
+traefik/ssl-certs/**

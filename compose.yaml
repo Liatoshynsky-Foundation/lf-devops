@@ -1,22 +1,47 @@
 volumes:
-  caddy_data:
-  caddy_config:
+  traefik_data:
   uptime-kuma:
 
+networks:
+  internal:
+    driver: bridge
+
 services:
-  caddy:
-    image: caddy:latest
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
     restart: unless-stopped
-    container_name: caddy
     env_file: .env
     ports:
       - "80:80"
       - "443:443"
+      - "8080:8080"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - ./caddy/certs:/etc/certs:ro
-      - caddy_data:/data
-      - caddy_config:/config
+      - "./letsencrypt:/letsencrypt"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - internal
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.traefik.entrypoints=websecure"
+    #   - "traefik.http.routers.traefik.tls.certresolver=myresolver"
+    #   - "traefik.http.routers.traefik.rule=Host(`traefik.domain.id`)"
+    #   - "traefik.http.routers.traefik.service=api@internal"
+    environment:
+      - CF_API_KEY=${CF_API_KEY}
+    command:
+      - "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge=true"
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
+      - "--certificatesresolvers.cloudflare.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--certificatesresolvers.cloudflare.acme.email=tech.liatoshynsky@gmail.com"
+      - "--certificatesresolvers.cloudflare.acme.storage=/letsencrypt/acme.json"
 
   lf-placeholder:
     image: ghcr.io/liatoshynsky-foundation/lf-placeholder:latest
@@ -25,6 +50,14 @@ services:
     container_name: lf-placeholder
     expose:
       - "80"
+    networks:
+      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.placeholder.rule=Host(`liatoshynsky.com`)"
+      - "traefik.http.routers.placeholder.entrypoints=websecure"
+      - "traefik.http.routers.placeholder.tls.certresolver=cloudflare"
+      - "traefik.http.services.placeholder.loadbalancer.server.port=80"
     healthcheck:
       test:
         ["CMD-SHELL", "wget -q -O- http://localhost/ >/dev/null 2>&1 || exit 1"]
@@ -40,6 +73,16 @@ services:
     env_file: .env.client
     expose:
       - "3000"
+    networks:
+      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.client.rule=Host(`client.liatoshynsky.com`)"
+      - "traefik.http.routers.client.entrypoints=websecure"
+      - "traefik.http.routers.client.tls.certresolver=cloudflare"
+      - "traefik.http.middlewares.client-auth.basicauth.users=${TRAEFIK_BASIC_AUTH_HASH}"
+      - "traefik.http.routers.client.middlewares=client-auth"
+      - "traefik.http.services.client.loadbalancer.server.port=3000"
     healthcheck:
       test:
         [
@@ -58,6 +101,16 @@ services:
     env_file: .env.admin
     expose:
       - "3001"
+    networks:
+      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.admin.rule=Host(`admin.liatoshynsky.com`)"
+      - "traefik.http.routers.admin.entrypoints=websecure"
+      - "traefik.http.routers.admin.tls.certresolver=cloudflare"
+      - "traefik.http.middlewares.admin-auth.basicauth.users=${TRAEFIK_BASIC_AUTH_HASH}"
+      - "traefik.http.routers.admin.middlewares=admin-auth"
+      - "traefik.http.services.admin.loadbalancer.server.port=3001"
     healthcheck:
       test:
         [
@@ -78,5 +131,13 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     expose:
       - "4173"
+    networks:
+      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.uptime.rule=Host(`status.liatoshynsky.com`)"
+      - "traefik.http.routers.uptime.entrypoints=websecure"
+      - "traefik.http.routers.uptime.tls.certresolver=cloudflare"
+      - "traefik.http.services.uptime.loadbalancer.server.port=4173"
     environment:
       - UPTIME_KUMA_PORT=4173

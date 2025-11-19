@@ -4,14 +4,14 @@ This document describes the Liatoshynsky Foundation DevOps infrastructure projec
 
 ## Overview
 
-This repository contains the DevOps infrastructure for the Liatoshynsky Foundation web services. It manages deployment and configuration of multiple services using Docker Compose, with Caddy as a reverse proxy and SSL termination.
+This repository contains the DevOps infrastructure for the Liatoshynsky Foundation web services. It manages deployment and configuration of multiple services using Docker Compose, with Traefik as a reverse proxy and SSL termination.
 
 ## Project Structure
 
 ```
 lf-devops/
 ├── compose.yaml          # Docker Compose configuration
-├── Caddyfile             # Caddy reverse proxy configuration
+├── traefik.yaml          # Traefik reverse proxy configuration
 ├── Makefile              # Convenience commands for project management
 ├── agent.md              # This documentation file
 ├── scripts/              # Utility scripts
@@ -20,19 +20,18 @@ lf-devops/
 │   ├── decrypt-env.sh    # Decrypt .env files
 │   ├── edit-env.sh       # Edit encrypted .env files
 │   └── check-env-secrets.sh  # Verify all secrets are encrypted
-└── caddy/
-    └── certs/            # SSL certificates (gitignored)
 ```
 
 ## Services
 
 The infrastructure consists of the following services:
 
-### 1. Caddy (Reverse Proxy)
-- **Container**: `caddy`
+### 1. Traefik (Reverse Proxy)
+- **Container**: `traefik`
 - **Ports**: 80, 443
 - **Purpose**: Reverse proxy with SSL/TLS termination
-- **Configuration**: `Caddyfile`
+- **Configuration**: `traefik.yaml`
+- **SSL**: Automatic certificate management via DNS-01 challenge with Cloudflare
 - **Domains**:
   - `liatoshynsky.com` → lf-placeholder
   - `client.liatoshynsky.com` → lf-client (with basic auth)
@@ -44,7 +43,6 @@ The infrastructure consists of the following services:
 - **Image**: `ghcr.io/liatoshynsky-foundation/lf-placeholder:latest`
 - **Port**: 80 (internal)
 - **Purpose**: Placeholder/main website
-- **Environment**: `.env`
 
 ### 3. lf-client
 - **Container**: `lf-client`
@@ -73,7 +71,7 @@ The infrastructure consists of the following services:
 
 The project uses encrypted environment files for secure secret management:
 
-- `.env` - Main environment variables (used by caddy and lf-placeholder)
+- `.env` - Traefik reverse proxy environment variables (Cloudflare credentials, basic auth hash)
 - `.env.client` - Client application environment variables
 - `.env.admin` - Admin panel environment variables
 
@@ -119,7 +117,7 @@ make down            # Stop all services
 make restart         # Restart all services
 make ps              # Show container status
 make logs            # Show logs for all services
-make logs-caddy      # Show Caddy logs
+make logs-traefik    # Show Traefik logs
 make logs-client     # Show client logs
 make logs-admin      # Show admin logs
 ```
@@ -205,12 +203,15 @@ If you prefer to use scripts directly:
 The project uses GitHub Actions for automated deployment:
 
 1. **Workflow**: `.github/workflows/deploy.yml`
-2. **Trigger**: Manual workflow dispatch (or push to main if enabled)
+2. **Trigger**: Manual workflow dispatch (can be run from any branch)
 3. **Process**:
-   - Pulls latest changes on server
+   - Fetches latest changes from the branch that triggered the workflow
+   - Checks out and resets to the latest version of that branch
    - Decrypts .env files
+   - Pulls latest Docker images
    - Stops containers
    - Starts containers with latest images
+4. **Branch Support**: The workflow automatically detects and deploys the branch from which it was triggered (e.g., `main`, `feat/47/caddy-traefik`, etc.)
 
 ### Required GitHub Secrets
 
@@ -238,11 +239,15 @@ docker compose up -d --pull always
 
 ## SSL Certificates
 
-SSL certificates are stored in `caddy/certs/`:
-- `origin.pem` - Certificate file
-- `origin.key` - Private key file
+SSL certificates are automatically managed by Traefik using Let's Encrypt with DNS-01 challenge via Cloudflare:
+- Certificates are automatically obtained and renewed
+- Stored in Traefik volume (`traefik_data`)
+- No manual certificate management required
 
-**Note**: This directory is gitignored. Certificates must be manually placed on the server.
+**Required configuration**:
+- `CLOUDFLARE_EMAIL` in `.env` - Email for Let's Encrypt
+- `CLOUDFLARE_API_TOKEN` in `.env` - Cloudflare API token with DNS edit permissions
+- `TRAEFIK_BASIC_AUTH_HASH` in `.env` - Basic authentication hash for protected routes
 
 ## Monitoring
 
@@ -284,15 +289,20 @@ make encrypt .env
 
 ### Certificate Issues
 
-1. **Verify certificates exist**:
-```bash
-ls -la caddy/certs/
-```
+1. **Check Traefik logs**:
+   ```bash
+   make logs-traefik
+   ```
 
-2. **Check Caddy logs**:
-```bash
-make logs-caddy
-```
+2. **Verify Cloudflare credentials**:
+   ```bash
+   make decrypt .env
+   # Check CLOUDFLARE_EMAIL and CLOUDFLARE_API_TOKEN
+   ```
+
+3. **Verify DNS-01 challenge**:
+   - Ensure Cloudflare API token has DNS edit permissions
+   - Check that domains point to the server IP
 
 ### Port Conflicts
 
@@ -313,5 +323,5 @@ If ports 80 or 443 are already in use:
 ## Additional Resources
 
 - [Docker Compose Documentation](https://docs.docker.com/compose/)
-- [Caddy Documentation](https://caddyserver.com/docs/)
+- [Traefik Documentation](https://doc.traefik.io/traefik/)
 - [Makefile Documentation](https://www.gnu.org/software/make/manual/)

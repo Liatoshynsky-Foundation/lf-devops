@@ -40,8 +40,8 @@ restart: ## Restart all services
 logs: ## Show logs for all services
 	docker compose -f $(COMPOSE_FILE) logs -f
 
-logs-caddy: ## Show Caddy logs
-	docker compose -f $(COMPOSE_FILE) logs -f caddy
+logs-traefik: ## Show Traefik logs
+	docker compose -f $(COMPOSE_FILE) logs -f traefik
 
 logs-client: ## Show client application logs
 	docker compose -f $(COMPOSE_FILE) logs -f lf-client

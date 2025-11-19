@@ -17,7 +17,7 @@ NC='\033[0m'
 
 # Get password from environment or prompt
 get_password() {
-    local mode="$1"  # "encrypt" or "decrypt"
+    local mode="$1"
 
     if [ -z "$ENV_PASSWORD" ]; then
         echo -n "Enter password for $mode: " >&2
@@ -33,7 +33,6 @@ get_password() {
     echo "$password"
 }
 
-# Base64 decode (cross-platform)
 base64_decode() {
     local data="$1"
     local output="$2"
@@ -45,27 +44,23 @@ base64_decode() {
     return 1
 }
 
-# Process env file line by line
 process_env_file() {
     local input_file="$1"
     local output_file="$2"
-    local process_func="$3"  # Function to process each KEY=VALUE pair
+    local process_func="$3"
 
     local temp_output=$(mktemp)
 
     while IFS= read -r line || [ -n "$line" ]; do
-        # Skip empty lines and comments
         if [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]]; then
             echo "$line" >> "$temp_output"
             continue
         fi
 
-        # Check if line matches KEY=VALUE pattern
         if [[ "$line" =~ ^([^=]+)=(.*)$ ]]; then
             local key="${BASH_REMATCH[1]}"
             local value="${BASH_REMATCH[2]}"
 
-            # Process the value
             local processed_value=$($process_func "$value")
             if [ $? -eq 0 ]; then
                 echo "${key}=${processed_value}" >> "$temp_output"
@@ -73,7 +68,6 @@ process_env_file() {
                 echo "$line" >> "$temp_output"
             fi
         else
-            # Line doesn't match KEY=VALUE pattern, keep as is
             echo "$line" >> "$temp_output"
         fi
     done < "$input_file"
@@ -81,7 +75,6 @@ process_env_file() {
     mv "$temp_output" "$output_file"
 }
 
-# Decrypt a single value
 decrypt_value() {
     local encrypted_value="$1"
     local password="$2"
@@ -103,13 +96,12 @@ decrypt_value() {
     return 1
 }
 
-# Encrypt a single value
 encrypt_value() {
     local value="$1"
     local password="$2"
 
     [ -z "$value" ] && echo "" && return 0
-    [[ "$value" =~ ^AES::@ ]] && echo "$value" && return 0  # Already encrypted
+    [[ "$value" =~ ^AES::@ ]] && echo "$value" && return 0
 
     local temp_input=$(mktemp) temp_encrypted=$(mktemp)
     echo -n "$value" > "$temp_input"
@@ -126,14 +118,12 @@ encrypt_value() {
     return 1
 }
 
-# Verify password by trying to decrypt first encrypted value from file
 verify_password() {
     local input_file="$1"
     local password="$2"
 
-    [ ! -f "$input_file" ] && return 0  # File doesn't exist, skip verification
+    [ ! -f "$input_file" ] && return 0
 
-    # Find first encrypted value
     while IFS= read -r line || [ -n "$line" ]; do
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
 
@@ -141,20 +131,17 @@ verify_password() {
             local value="${BASH_REMATCH[2]}"
 
             if [[ "$value" =~ ^AES::@ ]]; then
-                # Try to decrypt this value (suppress output)
                 local test_decrypt=$(decrypt_value "$value" "$password" 2>/dev/null)
                 local decrypt_status=$?
-                # Check if decryption succeeded and result is not empty
                 if [ $decrypt_status -ne 0 ] || [ -z "$test_decrypt" ]; then
                     echo -e "${RED}Error: Incorrect password! Cannot decrypt values in $input_file${NC}" >&2
                     echo -e "${YELLOW}Please check your password and try again.${NC}" >&2
                     return 1
                 fi
-                return 0  # Password is correct
+                return 0
             fi
         fi
     done < "$input_file"
 
-    return 0  # No encrypted values found, password check not needed
+    return 0
 }
-
