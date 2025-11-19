@@ -205,12 +205,15 @@ If you prefer to use scripts directly:
 The project uses GitHub Actions for automated deployment:
 
 1. **Workflow**: `.github/workflows/deploy.yml`
-2. **Trigger**: Manual workflow dispatch (or push to main if enabled)
+2. **Trigger**: Manual workflow dispatch (can be run from any branch)
 3. **Process**:
-   - Pulls latest changes on server
+   - Fetches latest changes from the branch that triggered the workflow
+   - Checks out and resets to the latest version of that branch
    - Decrypts .env files
+   - Pulls latest Docker images
    - Stops containers
    - Starts containers with latest images
+4. **Branch Support**: The workflow automatically detects and deploys the branch from which it was triggered (e.g., `main`, `feat/47/caddy-traefik`, etc.)
 
 ### Required GitHub Secrets
 
