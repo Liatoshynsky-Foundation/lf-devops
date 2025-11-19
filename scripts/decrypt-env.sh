@@ -12,16 +12,48 @@ cd "$PROJECT_ROOT"
 
 source "$SCRIPT_DIR/env-crypto.sh"
 
+# Verify password by trying to decrypt first encrypted value from file
+verify_password() {
+    local input_file="$1"
+    local password="$2"
+
+    [ ! -f "$input_file" ] && return 0  # File doesn't exist, skip verification
+
+    # Find first encrypted value
+    while IFS= read -r line || [ -n "$line" ]; do
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+
+        if [[ "$line" =~ ^([^=]+)=(.*)$ ]]; then
+            local value="${BASH_REMATCH[2]}"
+
+            if [[ "$value" =~ ^AES::@ ]]; then
+                # Try to decrypt this value (suppress output)
+                local test_decrypt=$(decrypt_value "$value" "$password" 2>/dev/null)
+                local decrypt_status=$?
+                # Check if decryption succeeded and result is not empty
+                if [ $decrypt_status -ne 0 ] || [ -z "$test_decrypt" ]; then
+                    echo -e "${RED}Error: Incorrect password! Cannot decrypt values in $input_file${NC}" >&2
+                    echo -e "${YELLOW}Please check your password and try again.${NC}" >&2
+                    return 1
+                fi
+                return 0  # Password is correct
+            fi
+        fi
+    done < "$input_file"
+
+    return 0  # No encrypted values found, password check not needed
+}
+
 # Decrypt a single value
 decrypt_value() {
     local encrypted_value="$1"
     local password="$2"
-    
+
     [[ ! "$encrypted_value" =~ ^AES::@(.+)@$ ]] && echo "$encrypted_value" && return 0
-    
+
     local base64_data="${BASH_REMATCH[1]}"
     local temp_encrypted=$(mktemp) temp_decrypted=$(mktemp)
-    
+
     if base64_decode "$base64_data" "$temp_encrypted" && \
        echo "$password" | openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 \
            -in "$temp_encrypted" -out "$temp_decrypted" -pass stdin 2>/dev/null; then
@@ -29,7 +61,7 @@ decrypt_value() {
         rm -f "$temp_encrypted" "$temp_decrypted"
         return 0
     fi
-    
+
     rm -f "$temp_encrypted" "$temp_decrypted"
     return 1
 }
@@ -39,28 +71,31 @@ decrypt_file() {
     local input_file="$1"
     local password="$2"  # Password passed as parameter
     local output_file="$input_file"  # Work in-place
-    
+
     [ ! -f "$input_file" ] && echo -e "${RED}Error: $input_file not found${NC}" >&2 && return 1
-    
+
+    # Verify password before starting decryption
+    if ! verify_password "$input_file" "$password"; then
+        return 1
+    fi
+
     local temp_output=$(mktemp)
     local decrypted_count=0
     local errors=0
-    
+
     while IFS= read -r line || [ -n "$line" ]; do
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && echo "$line" >> "$temp_output" && continue
-        
+
         if [[ "$line" =~ ^([^=]+)=(.*)$ ]]; then
             local key="${BASH_REMATCH[1]}" value="${BASH_REMATCH[2]}"
-            
+
             if [[ "$value" =~ ^AES::@ ]]; then
                 local decrypted=$(decrypt_value "$value" "$password")
                 if [ $? -eq 0 ]; then
-                    # Escape $ for Docker Compose (replace $ with $$)
-                    decrypted=$(echo "$decrypted" | sed 's/\$/$$/g')
                     echo "${key}=${decrypted}" >> "$temp_output"
                     ((decrypted_count++))
                 else
-                    echo -e "${RED}✗ Failed to decrypt: $key${NC}" >&2
+                    echo -e "${RED}✗ Failed to decrypt: $key (this should not happen after password verification)${NC}" >&2
                     echo "$line" >> "$temp_output"
                     ((errors++))
                 fi
@@ -71,11 +106,13 @@ decrypt_file() {
             echo "$line" >> "$temp_output"
         fi
     done < "$input_file"
-    
+
     mv "$temp_output" "$output_file"
-    
+
     if [ $errors -gt 0 ]; then
-        echo -e "${RED}✗ Decrypted: $input_file → $output_file (${decrypted_count} values, ${errors} errors)${NC}" >&2
+        echo -e "${RED}✗ Decryption completed with errors: $input_file → $output_file${NC}" >&2
+        echo -e "${RED}   Successfully decrypted: ${decrypted_count} values, Failed: ${errors} values${NC}" >&2
+        echo -e "${YELLOW}   Warning: Some values remain encrypted. File may be corrupted or password was incorrect.${NC}" >&2
         return 1
     elif [ $decrypted_count -gt 0 ]; then
         echo -e "${GREEN}✓ Decrypted: $input_file → $output_file (${decrypted_count} values)${NC}"

@@ -13,7 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Pull latest changes and decrypt .env files
+      - name: Deploy
         uses: appleboy/ssh-action@master
         env:
           ENV_PASSWORD: ${{ secrets.ENV_PASSWORD }}
@@ -23,19 +23,10 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           envs: ENV_PASSWORD
           script: |
+            set -e
             cd ${{ secrets.DEPLOY_PATH }}
             git pull
-            chmod +x scripts/decrypt-env.sh
-            ./scripts/decrypt-env.sh
-            chmod 600 .env .env.* 2>/dev/null || true
-
-      - name: Deploy containers
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            cd ${{ secrets.DEPLOY_PATH }}
-            docker compose down
-            docker compose up -d --build --remove-orphans
+            make decrypt
+            make pull
+            make down
+            make deploy

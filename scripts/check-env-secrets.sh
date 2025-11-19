@@ -16,18 +16,18 @@ source "$SCRIPT_DIR/env-crypto.sh"
 check_file() {
     local file="$1"
     local errors=0
-    
+
     [ ! -f "$file" ] && return 0
-    
+
     while IFS= read -r line || [ -n "$line" ]; do
         # Skip empty lines and comments
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-        
+
         # Check if line matches KEY=VALUE pattern
         if [[ "$line" =~ ^([^=]+)=(.*)$ ]]; then
             local key="${BASH_REMATCH[1]}"
             local value="${BASH_REMATCH[2]}"
-            
+
             # Check if value is NOT encrypted
             if [[ ! "$value" =~ ^AES::@ ]]; then
                 echo -e "${RED}✗ Unencrypted secret found in $file: $key${NC}" >&2
@@ -35,7 +35,7 @@ check_file() {
             fi
         fi
     done < "$file"
-    
+
     return $errors
 }
 

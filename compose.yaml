@@ -1,14 +1,14 @@
 volumes:
   caddy_data:
   caddy_config:
-  caddy_build:
   uptime-kuma:
 
 services:
   caddy:
-    image: caddy:builder-alpine
+    image: caddy:latest
     restart: unless-stopped
     container_name: caddy
+    env_file: .env
     ports:
       - "80:80"
       - "443:443"
@@ -17,16 +17,12 @@ services:
       - ./caddy/certs:/etc/certs:ro
       - caddy_data:/data
       - caddy_config:/config
-      - caddy_build:/tmp
-    env_file: .env
-    command: sh -c "xcaddy build --with github.com/caddy-dns/cloudflare && /usr/bin/caddy run --config /etc/caddy/Caddyfile"
 
   lf-placeholder:
     image: ghcr.io/liatoshynsky-foundation/lf-placeholder:latest
     pull_policy: always
     restart: unless-stopped
     container_name: lf-placeholder
-    env_file: .env
     expose:
       - "80"
     healthcheck:
@@ -41,7 +37,7 @@ services:
     image: ghcr.io/liatoshynsky-foundation/lf-client:1bcf6cb50f0c5f8f731c382a53524c3c771c645a
     pull_policy: always
     container_name: lf-client
-    env_file: .env
+    env_file: .env.client
     expose:
       - "3000"
     healthcheck:
@@ -59,7 +55,7 @@ services:
     image: ghcr.io/liatoshynsky-foundation/lf-admin:8f9a9eb5ef759d653c558c40ad6a7bcd6f83f12d
     pull_policy: always
     container_name: lf-admin
-    env_file: .env
+    env_file: .env.admin
     expose:
       - "3001"
     healthcheck:

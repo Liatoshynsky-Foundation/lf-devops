@@ -16,13 +16,13 @@ source "$SCRIPT_DIR/env-crypto.sh"
 encrypt_value() {
     local value="$1"
     local password="$2"
-    
+
     [ -z "$value" ] && echo "" && return 0
     [[ "$value" =~ ^AES::@ ]] && echo "$value" && return 0  # Already encrypted
-    
+
     local temp_input=$(mktemp) temp_encrypted=$(mktemp)
     echo -n "$value" > "$temp_input"
-    
+
     if echo "$password" | openssl enc -aes-256-cbc -salt -pbkdf2 -iter 10000 \
         -in "$temp_input" -out "$temp_encrypted" -pass stdin 2>/dev/null; then
         local base64_data=$(base64 < "$temp_encrypted" | tr -d '\n')
@@ -30,7 +30,7 @@ encrypt_value() {
         rm -f "$temp_input" "$temp_encrypted"
         return 0
     fi
-    
+
     rm -f "$temp_input" "$temp_encrypted"
     return 1
 }
@@ -40,19 +40,19 @@ encrypt_file() {
     local input_file="$1"
     local password="$2"  # Password passed as parameter
     local output_file="$input_file"  # Work in-place
-    
+
     [ ! -f "$input_file" ] && echo -e "${RED}Error: $input_file not found${NC}" >&2 && return 1
-    
+
     local temp_output=$(mktemp)
     local encrypted_count=0
-    
+
     while IFS= read -r line || [ -n "$line" ]; do
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && echo "$line" >> "$temp_output" && continue
-        
+
         if [[ "$line" =~ ^([^=]+)=(.*)$ ]]; then
             local key="${BASH_REMATCH[1]}" value="${BASH_REMATCH[2]}"
             [[ "$value" =~ ^AES::@ ]] && echo "$line" >> "$temp_output" && continue
-            
+
             local encrypted=$(encrypt_value "$value" "$password")
             if [ $? -eq 0 ]; then
                 echo "${key}=${encrypted}" >> "$temp_output"
@@ -66,7 +66,7 @@ encrypt_file() {
             echo "$line" >> "$temp_output"
         fi
     done < "$input_file"
-    
+
     mv "$temp_output" "$output_file"
     echo -e "${GREEN}✓ Encrypted: $input_file → $output_file (${encrypted_count} values)${NC}"
     return 0
