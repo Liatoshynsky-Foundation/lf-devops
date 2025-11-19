@@ -15,21 +15,33 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    environment:
-      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
+      - "8080:8080"
     volumes:
-      - ./traefik/ssl-certs/:/ssl-certs
-      - ./traefik/config:/etc/traefik
-      - /etc/localtime:/etc/localtime:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - "./letsencrypt:/letsencrypt"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
     networks:
       - internal
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.traefik.entrypoints=websecure"
-      - "traefik.http.routers.traefik.tls.certresolver=myresolver"
-      - "traefik.http.routers.traefik.rule=Host(`traefik.domain.id`)"
-      - "traefik.http.routers.traefik.service=api@internal"
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.traefik.entrypoints=websecure"
+    #   - "traefik.http.routers.traefik.tls.certresolver=myresolver"
+    #   - "traefik.http.routers.traefik.rule=Host(`traefik.domain.id`)"
+    #   - "traefik.http.routers.traefik.service=api@internal"
+    environment:
+      - CF_API_KEY=${CF_API_KEY}
+    command:
+      - "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.dnschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.dnschallenge.provider=cloudflare"
+      - "--certificatesresolvers.myresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--certificatesresolvers.myresolver.acme.email=tech.liatoshynsky@gmail.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
 
   lf-placeholder:
     image: ghcr.io/liatoshynsky-foundation/lf-placeholder:latest
