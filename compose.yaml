@@ -23,9 +23,6 @@ services:
       - internal
     command:
       - --configfile=/traefik.yaml
-    environment:
-      - CLOUDFLARE_EMAIL=${CLOUDFLARE_EMAIL}
-      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
 
   lf-placeholder:
     image: ghcr.io/liatoshynsky-foundation/lf-placeholder:latest
