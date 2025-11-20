@@ -1,0 +1,308 @@
+name: Reusable CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node.js version"
+        required: false
+        type: string
+        default: "22"
+      mongodb-version:
+        description: "MongoDB version"
+        required: false
+        type: string
+        default: "8"
+      project-name:
+        description: "Project name"
+        required: true
+        type: string
+      run-build:
+        description: "Whether to run build"
+        required: false
+        type: boolean
+        default: true
+      run-tests:
+        description: "Whether to run tests"
+        required: false
+        type: boolean
+        default: true
+      run-security-scan:
+        description: "Whether to run security scans"
+        required: false
+        type: boolean
+        default: false
+      security-scan-on-main-only:
+        description: "Run security scan only on main branch PRs"
+        required: false
+        type: boolean
+        default: true
+      mongodb-connection-string:
+        description: "MongoDB connection string (if not using default setup)"
+        required: false
+        type: string
+    secrets:
+      SNYK_TOKEN:
+        required: false
+
+jobs:
+  lint:
+    name: Run ESLint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run TypeScript type check
+        run: npx tsc --noEmit
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: inputs.run-build
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+  tests:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: inputs.run-tests
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: "npm"
+
+      - name: Install MongoDB
+        if: inputs.mongodb-connection-string == ''
+        uses: supercharge/mongodb-github-action@1.12.0
+        with:
+          mongodb-version: ${{ inputs.mongodb-version }}
+          mongodb-container-name: mongodb
+          mongodb-port: 27017
+          mongodb-db: mongodb
+          mongodb-username: admin
+          mongodb-password: password
+
+      - name: Install MongoDB shell
+        if: inputs.mongodb-connection-string == ''
+        run: |
+          if ! command -v mongosh &> /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y gnupg curl
+            curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | \
+            sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
+            echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/8.0 multiverse" | \
+            sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+            sudo apt-get update && sudo apt-get install -y mongodb-mongosh
+          fi
+
+      - name: Check MongoDB
+        if: inputs.mongodb-connection-string == ''
+        run: |
+          for i in {1..30}; do
+            if mongosh --eval "db.runCommand({ ping: 1 })" localhost:27017 --quiet > /dev/null 2>&1; then
+              echo "MongoDB is up (attempt $i)"
+              exit 0
+            fi
+            echo "Waiting for MongoDB... (attempt $i)"
+            sleep 2
+          done
+          echo "MongoDB did not start in time!" && exit 1
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Tests
+        env:
+          NODE_OPTIONS: --max_old_space_size=4096
+          MONGO_URL: ${{ inputs.mongodb-connection-string != '' && inputs.mongodb-connection-string || 'mongodb://admin:password@mongodb:27017/mongodb' }}
+        run: npm run test
+
+  build-docker:
+    name: Build and Test Docker Container
+    runs-on: ubuntu-latest
+    needs: [lint, type-check, tests, build]
+    if: always() && (needs.lint.result == 'success' && needs.type-check.result == 'success') && (inputs.run-tests == false || needs.tests.result == 'success' || needs.tests.result == 'skipped') && (inputs.run-build == false || needs.build.result == 'success' || needs.build.result == 'skipped')
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          tags: ${{ inputs.project-name }}:test
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Set up Snyk CLI
+        if: inputs.run-security-scan && (!inputs.security-scan-on-main-only || (github.event_name == 'pull_request' && github.base_ref == 'main'))
+        uses: snyk/actions/setup@806182742461562b67788a64410098c9d9b96adb
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Prepare SARIF directory
+        if: inputs.run-security-scan && (!inputs.security-scan-on-main-only || (github.event_name == 'pull_request' && github.base_ref == 'main'))
+        run: mkdir -p sarif
+
+      - name: Snyk Container test (SARIF)
+        if: inputs.run-security-scan && (!inputs.security-scan-on-main-only || (github.event_name == 'pull_request' && github.base_ref == 'main'))
+        run: snyk container test ${{ inputs.project-name }}:test --file=Dockerfile --exclude-app-vulns --sarif-file-output=./sarif/snyk-container.sarif || true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Snyk Container monitor
+        if: inputs.run-security-scan && (!inputs.security-scan-on-main-only || (github.event_name == 'pull_request' && github.base_ref == 'main'))
+        run: snyk container monitor ${{ inputs.project-name }}:test --file=Dockerfile
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Upload Snyk Container SARIF
+        if: inputs.run-security-scan && (!inputs.security-scan-on-main-only || (github.event_name == 'pull_request' && github.base_ref == 'main')) && hashFiles('sarif/snyk-container.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sarif/snyk-container.sarif
+          category: snyk-container
+
+      - name: Cleanup test image
+        if: always()
+        run: docker rmi ${{ inputs.project-name }}:test || true
+
+  security-scan:
+    name: Run Security Scan
+    runs-on: ubuntu-latest
+    needs: [lint]
+    if: inputs.run-security-scan && (!inputs.security-scan-on-main-only || (github.event_name == 'pull_request' && github.base_ref == 'main'))
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set up Snyk CLI
+        uses: snyk/actions/setup@806182742461562b67788a64410098c9d9b96adb
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Prepare SARIF directory
+        run: mkdir -p sarif
+
+      - name: Snyk Code test (SARIF)
+        run: snyk code test --sarif-file-output=./sarif/snyk-code.sarif || true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Snyk Open Source monitor
+        run: snyk monitor --file=package-lock.json --package-manager=npm --strict-out-of-sync=false
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Snyk Open Source test (SARIF)
+        run: snyk test --all-projects --sarif-file-output=./sarif/snyk-oss.sarif --strict-out-of-sync=false || true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Upload Snyk Code SARIF
+        if: hashFiles('sarif/snyk-code.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sarif/snyk-code.sarif
+          category: snyk-code
+
+      - name: Upload Snyk OSS SARIF
+        if: hashFiles('sarif/snyk-oss.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sarif/snyk-oss.sarif
+          category: snyk-oss

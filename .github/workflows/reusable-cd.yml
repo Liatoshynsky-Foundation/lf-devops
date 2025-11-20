@@ -1,0 +1,323 @@
+name: Reusable CD
+
+on:
+  workflow_call:
+    inputs:
+      project-name:
+        description: "Project name"
+        required: true
+        type: string
+      azure-registry:
+        description: "Azure Container Registry URL"
+        required: false
+        type: string
+      azure-username-secret:
+        description: "Secret name for Azure registry username"
+        required: false
+        type: string
+      azure-password-secret:
+        description: "Secret name for Azure registry password"
+        required: false
+        type: string
+      azure-image-name:
+        description: "Azure image name"
+        required: false
+        type: string
+      deploy-azure:
+        description: "Deploy to Azure"
+        required: false
+        type: boolean
+        default: false
+      azure-app-name:
+        description: "Azure App Service name"
+        required: false
+        type: string
+      azure-publish-profile-secret:
+        description: "Secret name for Azure publish profile"
+        required: false
+        type: string
+      azure-slot-name:
+        description: "Azure slot name"
+        required: false
+        type: string
+        default: "production"
+      deploy-azure-qa:
+        description: "Deploy to Azure QA"
+        required: false
+        type: boolean
+        default: false
+      azure-qa-app-name:
+        description: "Azure QA App Service name"
+        required: false
+        type: string
+      azure-qa-publish-profile-secret:
+        description: "Secret name for Azure QA publish profile"
+        required: false
+        type: string
+      azure-qa-username-secret:
+        description: "Secret name for Azure QA registry username"
+        required: false
+        type: string
+      deploy-vps:
+        description: "Deploy to VPS"
+        required: false
+        type: boolean
+        default: false
+      vps-host-secret:
+        description: "Secret name for VPS host"
+        required: false
+        type: string
+      vps-username-secret:
+        description: "Secret name for VPS username"
+        required: false
+        type: string
+      vps-ssh-key-secret:
+        description: "Secret name for VPS SSH key"
+        required: false
+        type: string
+      vps-port-secret:
+        description: "Secret name for VPS port"
+        required: false
+        type: string
+      vps-compose-path:
+        description: "Path to docker-compose on VPS"
+        required: false
+        type: string
+        default: "/root/docker/lf-prj"
+      vps-services:
+        description: "Comma-separated list of services to deploy"
+        required: false
+        type: string
+      vps-health-check-url:
+        description: "Health check URL for VPS deployment"
+        required: false
+        type: string
+      vps-deployment-url:
+        description: "VPS deployment URL for environment output"
+        required: false
+        type: string
+    secrets:
+      azure-username:
+        required: false
+      azure-password:
+        required: false
+      azure-publish-profile:
+        required: false
+      azure-qa-publish-profile:
+        required: false
+      azure-qa-username:
+        required: false
+
+jobs:
+  build:
+    name: Build container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Azure Container Registry
+        if: inputs.azure-registry != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.azure-registry }}
+          username: ${{ secrets.azure-username }}
+          password: ${{ secrets.azure-password }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set lowercase repository owner
+        run: echo "REPO_OWNER_LOWER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Set image tag based on branch
+        id: set-tag
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "tag=stage" >> $GITHUB_OUTPUT
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set Azure image tag
+        if: inputs.azure-registry != ''
+        id: azure-tag
+        env:
+          AZURE_USERNAME: ${{ secrets.azure-username }}
+        run: |
+          # Remove protocol (https://) and trailing slash from registry URL
+          REGISTRY="${{ inputs.azure-registry }}"
+          REGISTRY="${REGISTRY#https://}"
+          REGISTRY="${REGISTRY#http://}"
+          REGISTRY="${REGISTRY%/}"
+          # Format: registry/username/image:sha
+          echo "tag=${REGISTRY}/${AZURE_USERNAME}/${{ inputs.azure-image-name }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.azure-tag.outputs.tag }}
+            ghcr.io/${{ env.REPO_OWNER_LOWER }}/${{ inputs.project-name }}:${{ github.sha }}
+            ghcr.io/${{ env.REPO_OWNER_LOWER }}/${{ inputs.project-name }}:${{ steps.set-tag.outputs.tag }}
+          file: ./Dockerfile
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-azure:
+    name: Deploy to Azure Web App
+    runs-on: ubuntu-latest
+    needs: build
+    if: inputs.deploy-azure && inputs.azure-registry != '' && inputs.azure-app-name != ''
+    environment:
+      name: "production"
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+
+    steps:
+      - name: Set Azure registry image
+        id: azure-image
+        run: |
+          # Remove protocol (https://) and trailing slash from registry URL
+          REGISTRY="${{ inputs.azure-registry }}"
+          REGISTRY="${REGISTRY#https://}"
+          REGISTRY="${REGISTRY#http://}"
+          REGISTRY="${REGISTRY%/}"
+          echo "image=${REGISTRY}/${AZURE_USERNAME}/${{ inputs.azure-image-name }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+        shell: bash
+        env:
+          AZURE_USERNAME: ${{ secrets.azure-username }}
+
+      - name: Deploy to Azure Web App
+        id: deploy-to-webapp
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ inputs.azure-app-name }}
+          slot-name: ${{ inputs.azure-slot-name }}
+          publish-profile: ${{ secrets.azure-publish-profile }}
+          images: ${{ steps.azure-image.outputs.image }}
+
+  deploy-azure-qa:
+    name: Deploy to Azure Web App (QA)
+    runs-on: ubuntu-latest
+    needs: build
+    if: inputs.deploy-azure-qa && inputs.azure-registry != '' && inputs.azure-qa-app-name != ''
+    environment:
+      name: "qa"
+      url: ${{ steps.deploy-to-qa-webapp.outputs.webapp-url }}
+
+    steps:
+      - name: Set Azure QA registry image
+        id: azure-qa-image
+        run: |
+          # Remove protocol (https://) and trailing slash from registry URL
+          REGISTRY="${{ inputs.azure-registry }}"
+          REGISTRY="${REGISTRY#https://}"
+          REGISTRY="${REGISTRY#http://}"
+          REGISTRY="${REGISTRY%/}"
+          echo "image=${REGISTRY}/${AZURE_QA_USERNAME}/${{ inputs.azure-image-name }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+        shell: bash
+        env:
+          AZURE_QA_USERNAME: ${{ secrets.azure-qa-username }}
+
+      - name: Deploy to Azure Web App (QA)
+        id: deploy-to-qa-webapp
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ inputs.azure-qa-app-name }}
+          slot-name: "production"
+          publish-profile: ${{ secrets.azure-qa-publish-profile }}
+          images: ${{ steps.azure-qa-image.outputs.image }}
+
+  deploy-vps:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: build
+    if: inputs.deploy-vps && inputs.vps-host-secret != '' && inputs.vps-username-secret != '' && inputs.vps-ssh-key-secret != ''
+    environment:
+      name: "production"
+      url: ${{ steps.set-vps-url.outputs.vps-url }}
+
+    steps:
+      - name: Set lowercase repository owner
+        run: echo "REPO_OWNER_LOWER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Deploy to VPS with Docker Compose
+        id: deploy-to-vps
+        uses: appleboy/ssh-action@v1.2.3
+        with:
+          host: ${{ secrets[inputs.vps-host-secret] }}
+          username: ${{ secrets[inputs.vps-username-secret] }}
+          key: ${{ secrets[inputs.vps-ssh-key-secret] }}
+          port: ${{ secrets[inputs.vps-port-secret] || 22 }}
+          script: |
+            set -e
+
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            cd ${{ inputs.vps-compose-path }}
+
+            docker pull ghcr.io/${{ env.REPO_OWNER_LOWER }}/${{ inputs.project-name }}:${{ github.sha }}
+
+            docker tag ghcr.io/${{ env.REPO_OWNER_LOWER }}/${{ inputs.project-name }}:${{ github.sha }} ghcr.io/${{ env.REPO_OWNER_LOWER }}/${{ inputs.project-name }}:latest
+
+            docker-compose stop ${{ inputs.vps-services }}
+            docker-compose rm -f ${{ inputs.vps-services }}
+            docker-compose up -d ${{ inputs.vps-services }}
+
+            sleep 15
+
+            docker-compose ps ${{ inputs.vps-services }}
+
+            echo "Performing health checks..."
+            HEALTH_CHECK_FAILED=true
+            for i in {1..5}; do
+              if curl -f ${{ inputs.vps-health-check-url }} >/dev/null 2>&1; then
+                echo "Health check passed (attempt $i)"
+                HEALTH_CHECK_FAILED=false
+                break
+              else
+                echo "Health check failed (attempt $i)"
+                sleep 10
+              fi
+            done
+
+            if [ "$HEALTH_CHECK_FAILED" = "true" ]; then
+              echo "All health checks failed, rolling back to previous image..."
+              docker tag ghcr.io/${{ env.REPO_OWNER_LOWER }}/${{ inputs.project-name }}:latest ghcr.io/${{ env.REPO_OWNER_LOWER }}/${{ inputs.project-name }}:failed-${{ github.sha }}
+              docker pull ghcr.io/${{ env.REPO_OWNER_LOWER }}/${{ inputs.project-name }}:latest || true
+              docker-compose stop ${{ inputs.vps-services }}
+              docker-compose up -d ${{ inputs.vps-services }}
+              exit 1
+            fi
+
+            echo "Checking logs for errors..."
+            SERVICE_NAME=$(echo "${{ inputs.vps-services }}" | cut -d',' -f1)
+            if docker-compose logs $SERVICE_NAME | tail -20 | grep -i "error\|fatal\|exception"; then
+              echo "Errors found in logs"
+              docker-compose logs $SERVICE_NAME
+              exit 1
+            fi
+
+            echo "Cleaning up old images..."
+            docker image prune -f
+            docker images ghcr.io/${{ env.REPO_OWNER_LOWER }}/${{ inputs.project-name }} --format "table {{.Tag}}\t{{.CreatedAt}}" | tail -n +4 | awk '{print $1}' | xargs -r docker rmi || true
+
+      - name: Set VPS deployment URL
+        id: set-vps-url
+        if: inputs.vps-deployment-url != ''
+        run: echo "vps-url=${{ inputs.vps-deployment-url }}" >> $GITHUB_OUTPUT

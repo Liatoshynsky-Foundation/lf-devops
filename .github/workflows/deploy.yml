@@ -2,31 +2,137 @@ name: Deploy
 
 on:
   workflow_dispatch:
-  # push:
-  #   branches:
-  #     - main
+    inputs:
+      deploy-type:
+        description: "What to deploy (applications/infrastructure/all)"
+        required: false
+        type: choice
+        options:
+          - applications
+          - infrastructure
+          - all
+        default: "applications"
+      admin-tag:
+        description: "Admin image tag (stage/latest/SHA)"
+        required: false
+        default: "stage"
+      client-tag:
+        description: "Client image tag (stage/latest/SHA)"
+        required: false
+        default: "stage"
+      placeholder-tag:
+        description: "Placeholder image tag"
+        required: false
+        default: "latest"
+      services:
+        description: "Comma-separated services to deploy (admin,client,placeholder,all)"
+        required: false
+        default: "admin,client,placeholder"
+  repository_dispatch:
+    types: [deploy-applications]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DEPLOY_TYPE: ${{ github.event.inputs.deploy-type || 'applications' }}
+      ADMIN_TAG: ${{ github.event.inputs.admin-tag || github.event.client_payload.tag || 'stage' }}
+      CLIENT_TAG: ${{ github.event.inputs.client-tag || github.event.client_payload.tag || 'stage' }}
+      PLACEHOLDER_TAG: ${{ github.event.inputs.placeholder-tag || 'latest' }}
+      SERVICES: ${{ github.event.inputs.services || 'all' }}
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Deploy
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1.2.3
         env:
           ENV_PASSWORD: ${{ secrets.ENV_PASSWORD }}
+          DEPLOY_TYPE: ${{ env.DEPLOY_TYPE }}
+          ADMIN_TAG: ${{ env.ADMIN_TAG }}
+          CLIENT_TAG: ${{ env.CLIENT_TAG }}
+          PLACEHOLDER_TAG: ${{ env.PLACEHOLDER_TAG }}
+          SERVICES: ${{ env.SERVICES }}
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          envs: ENV_PASSWORD
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: ENV_PASSWORD,DEPLOY_TYPE,ADMIN_TAG,CLIENT_TAG,PLACEHOLDER_TAG,SERVICES
           script: |
             set -e
-            cd ${{ secrets.DEPLOY_PATH }}
-            git pull
+
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            LOCK_FILE="$DEPLOY_PATH/.deploy.lock"
+
+            # Check lock file
+            if [ -f "$LOCK_FILE" ]; then
+              echo "Deployment in progress, waiting..."
+              timeout 300 bash -c "while [ -f '$LOCK_FILE' ]; do sleep 5; done" || {
+                echo "Timeout waiting for deployment"
+                exit 1
+              }
+            fi
+
+            # Create lock
+            touch "$LOCK_FILE"
+            trap "rm -f '$LOCK_FILE'" EXIT
+
+            cd "$DEPLOY_PATH"
+
+            # Update git without requiring write permissions to .git/objects
+            # Use fetch + reset instead of pull to avoid writing new objects
+            if [ -d ".git" ]; then
+              CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+              git fetch origin "$CURRENT_BRANCH" || git fetch origin
+              git reset --hard "origin/$CURRENT_BRANCH" 2>/dev/null || git reset --hard "origin/main" || git reset --hard HEAD
+            fi
+
+            # Decrypt env files
             make decrypt
-            make pull
-            make down
-            make deploy
+
+            # Login to GHCR for application deployments
+            if [ "$DEPLOY_TYPE" = "applications" ] || [ "$DEPLOY_TYPE" = "all" ]; then
+              echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            fi
+
+            # Deploy based on type
+            if [ "$DEPLOY_TYPE" = "infrastructure" ]; then
+              make deploy-infrastructure
+            elif [ "$DEPLOY_TYPE" = "applications" ]; then
+              # Deploy ap(?<==).*plications with specific tags and services
+              make deploy-applications ADMIN_TAG="$ADMIN_TAG" CLIENT_TAG="$CLIENT_TAG" PLACEHOLDER_TAG="$PLACEHOLDER_TAG" SERVICES="$SERVICES"
+
+              sleep 15
+
+              # Health checks
+              make health-check
+
+              # Check logs
+              make check-logs
+            else
+              # all - deploy everything
+              make deploy-all ADMIN_TAG="$ADMIN_TAG" CLIENT_TAG="$CLIENT_TAG" PLACEHOLDER_TAG="$PLACEHOLDER_TAG"
+
+              sleep 15
+
+              # Health checks
+              make health-check
+
+              # Check logs
+              make check-logs
+            fi
+
+            # Cleanup old images
+            make cleanup-images
+
+            echo "Deployment completed successfully"
+            echo "Deploy type: $DEPLOY_TYPE"
+            echo "Admin tag: $ADMIN_TAG"
+            echo "Client tag: $CLIENT_TAG"
+            echo "Placeholder tag: $PLACEHOLDER_TAG"
