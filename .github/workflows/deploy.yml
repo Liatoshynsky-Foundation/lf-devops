@@ -27,7 +27,7 @@ on:
       services:
         description: "Comma-separated services to deploy (admin,client,placeholder,all)"
         required: false
-        default: "all"
+        default: "admin,client,placeholder"
   repository_dispatch:
     types: [deploy-applications]
 
@@ -84,6 +84,11 @@ jobs:
             trap "rm -f '$LOCK_FILE'" EXIT
 
             cd "$DEPLOY_PATH"
+
+            if [ -d ".git" ]; then
+              sudo chown -R $(whoami):$(whoami) .git || true
+              chmod -R u+w .git || true
+            fi
 
             # Update git and decrypt env files
             git pull
