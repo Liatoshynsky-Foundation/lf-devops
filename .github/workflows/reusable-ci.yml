@@ -183,8 +183,8 @@ jobs:
   build-docker:
     name: Build and Test Docker Container
     runs-on: ubuntu-latest
-    needs: [lint, type-check, build]
-    if: always() && (needs.lint.result == 'success' && needs.type-check.result == 'success') && (inputs.run-build == false || needs.build.result == 'success' || needs.build.result == 'skipped')
+    needs: [lint, type-check, tests, build]
+    if: always() && (needs.lint.result == 'success' && needs.type-check.result == 'success') && (inputs.run-tests == false || needs.tests.result == 'success' || needs.tests.result == 'skipped') && (inputs.run-build == false || needs.build.result == 'success' || needs.build.result == 'skipped')
     timeout-minutes: 30
     permissions:
       contents: read
