@@ -125,7 +125,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Azure Container Registry
-        if: inputs.azure-registry != '' && secrets.azure-username != '' && secrets.azure-password != ''
+        if: inputs.azure-registry != ''
         uses: docker/login-action@v3
         with:
           registry: ${{ inputs.azure-registry }}
@@ -157,7 +157,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ inputs.azure-registry != '' && secrets.azure-username != '' && format('{0}/{1}/{2}:{3}', inputs.azure-registry, secrets.azure-username, inputs.azure-image-name, github.sha) || '' }}
+            ${{ inputs.azure-registry != '' && format('{0}/{1}/{2}:{3}', inputs.azure-registry, secrets.azure-username, inputs.azure-image-name, github.sha) || '' }}
             ghcr.io/${{ env.REPO_OWNER_LOWER }}/${{ inputs.project-name }}:${{ github.sha }}
             ghcr.io/${{ env.REPO_OWNER_LOWER }}/${{ inputs.project-name }}:${{ steps.set-tag.outputs.tag }}
           file: ./Dockerfile
@@ -168,7 +168,7 @@ jobs:
     name: Deploy to Azure Web App
     runs-on: ubuntu-latest
     needs: build
-    if: inputs.deploy-azure && inputs.azure-registry != '' && inputs.azure-app-name != '' && secrets.azure-publish-profile != ''
+    if: inputs.deploy-azure && inputs.azure-registry != '' && inputs.azure-app-name != ''
     environment:
       name: "production"
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
@@ -187,7 +187,7 @@ jobs:
     name: Deploy to Azure Web App (QA)
     runs-on: ubuntu-latest
     needs: build
-    if: inputs.deploy-azure-qa && inputs.azure-registry != '' && inputs.azure-qa-app-name != '' && secrets.azure-qa-publish-profile != ''
+    if: inputs.deploy-azure-qa && inputs.azure-registry != '' && inputs.azure-qa-app-name != ''
     environment:
       name: "qa"
       url: ${{ steps.deploy-to-qa-webapp.outputs.webapp-url }}
