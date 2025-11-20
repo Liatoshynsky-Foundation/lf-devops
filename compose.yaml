@@ -34,7 +34,7 @@ services:
       start_period: 10s
 
   client:
-    image: ghcr.io/liatoshynsky-foundation/lf-client:${CLIENT_TAG:-stage}
+    image: ghcr.io/liatoshynsky-foundation/lf-client:${CLIENT_TAG:-latest}
     pull_policy: always
     container_name: lf-client
     env_file: .env.client
@@ -52,7 +52,7 @@ services:
       start_period: 40s
 
   admin:
-    image: ghcr.io/liatoshynsky-foundation/lf-admin:${ADMIN_TAG:-stage}
+    image: ghcr.io/liatoshynsky-foundation/lf-admin:${ADMIN_TAG:-latest}
     pull_policy: always
     container_name: lf-admin
     env_file: .env.admin

@@ -1,6 +1,9 @@
 name: Deploy
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       deploy-type:
@@ -15,11 +18,11 @@ on:
       admin-tag:
         description: "Admin image tag (stage/latest/SHA)"
         required: false
-        default: "stage"
+        default: "latest"
       client-tag:
         description: "Client image tag (stage/latest/SHA)"
         required: false
-        default: "stage"
+        default: "latest"
       placeholder-tag:
         description: "Placeholder image tag"
         required: false
@@ -40,8 +43,8 @@ jobs:
       packages: read
     env:
       DEPLOY_TYPE: ${{ github.event.inputs.deploy-type || 'applications' }}
-      ADMIN_TAG: ${{ github.event.inputs.admin-tag || github.event.client_payload.tag || 'stage' }}
-      CLIENT_TAG: ${{ github.event.inputs.client-tag || github.event.client_payload.tag || 'stage' }}
+      ADMIN_TAG: ${{ github.event.inputs.admin-tag || github.event.client_payload.tag || 'latest' }}
+      CLIENT_TAG: ${{ github.event.inputs.client-tag || github.event.client_payload.tag || 'latest' }}
       PLACEHOLDER_TAG: ${{ github.event.inputs.placeholder-tag || 'latest' }}
       SERVICES: ${{ github.event.inputs.services || 'all' }}
 
@@ -65,10 +68,26 @@ jobs:
           port: ${{ secrets.VPS_PORT || 22 }}
           envs: ENV_PASSWORD,DEPLOY_TYPE,ADMIN_TAG,CLIENT_TAG,PLACEHOLDER_TAG,SERVICES
           script: |
-            set -e
+            set -euo pipefail
 
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
             LOCK_FILE="$DEPLOY_PATH/.deploy.lock"
+            DEPLOY_SUCCESS=false
+            PREVIOUS_COMMIT=""
+
+            # Cleanup function
+            cleanup() {
+              rm -f "$LOCK_FILE"
+              if [ "$DEPLOY_SUCCESS" = false ] && [ -n "$PREVIOUS_COMMIT" ]; then
+                echo "Rolling back to previous commit: $PREVIOUS_COMMIT"
+                cd "$DEPLOY_PATH"
+                git reset --hard "$PREVIOUS_COMMIT" || git reset --hard origin/main
+              fi
+            }
+            trap cleanup EXIT
+
+            echo "Starting deployment: $DEPLOY_TYPE"
+            echo "Tags: admin=$ADMIN_TAG, client=$CLIENT_TAG, placeholder=$PLACEHOLDER_TAG"
 
             # Check lock file
             if [ -f "$LOCK_FILE" ]; then
@@ -81,58 +100,86 @@ jobs:
 
             # Create lock
             touch "$LOCK_FILE"
-            trap "rm -f '$LOCK_FILE'" EXIT
 
             cd "$DEPLOY_PATH"
 
-            # Update git without requiring write permissions to .git/objects
-            # Use fetch + reset instead of pull to avoid writing new objects
-            if [ -d ".git" ]; then
-              CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
-              git fetch origin "$CURRENT_BRANCH" || git fetch origin
-              git reset --hard "origin/$CURRENT_BRANCH" 2>/dev/null || git reset --hard "origin/main" || git reset --hard HEAD
+            # 2. Check branch (should be main)
+            CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+            echo "Current branch: $CURRENT_BRANCH"
+            if [ "$CURRENT_BRANCH" != "main" ]; then
+              echo "Warning: Not on main branch, switching to main"
+              git checkout main || {
+                echo "Error: Cannot switch to main branch"
+                exit 1
+              }
             fi
 
-            # Decrypt env files
+            # Save current commit for rollback
+            PREVIOUS_COMMIT=$(git rev-parse HEAD)
+            echo "Previous commit: $PREVIOUS_COMMIT"
+
+            # 3. Discard all local changes
+            echo "Discarding local changes..."
+            git restore . || true
+            git clean -fd || true
+
+            # 4. Pull from main branch
+            echo "Pulling from main branch..."
+            git pull origin main || {
+              echo "Error: Failed to pull from main"
+              exit 1
+            }
+
+            # Decrypt .env files
+            echo "Decrypting .env files..."
             make decrypt
 
             # Login to GHCR for application deployments
             if [ "$DEPLOY_TYPE" = "applications" ] || [ "$DEPLOY_TYPE" = "all" ]; then
+              echo "Logging in to GHCR..."
               echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             fi
 
-            # Deploy based on type
+            # 5. Deploy
+            echo "Deploying $DEPLOY_TYPE..."
             if [ "$DEPLOY_TYPE" = "infrastructure" ]; then
               make deploy-infrastructure
             elif [ "$DEPLOY_TYPE" = "applications" ]; then
-              # Deploy applications with specific tags and services
               make deploy-applications ADMIN_TAG="$ADMIN_TAG" CLIENT_TAG="$CLIENT_TAG" PLACEHOLDER_TAG="$PLACEHOLDER_TAG" SERVICES="$SERVICES"
-
-              sleep 15
-
-              # Health checks
-              make health-check
-
-              # Check logs
-              make check-logs
             else
-              # all - deploy everything
               make deploy-all ADMIN_TAG="$ADMIN_TAG" CLIENT_TAG="$CLIENT_TAG" PLACEHOLDER_TAG="$PLACEHOLDER_TAG"
-
-              sleep 15
-
-              # Health checks
-              make health-check
-
-              # Check logs
-              make check-logs
             fi
 
-            # Cleanup old images
-            make cleanup-images
+            # 6. Check deployment
+            echo "Checking deployment..."
+            CHECK_FAILED=false
+            if [ "$DEPLOY_TYPE" != "infrastructure" ]; then
+              set +e
+              make health-check
+              HEALTH_CHECK_STATUS=$?
+              make check-logs
+              LOG_CHECK_STATUS=$?
+              set -e
+              
+              if [ $HEALTH_CHECK_STATUS -ne 0 ] || [ $LOG_CHECK_STATUS -ne 0 ]; then
+                CHECK_FAILED=true
+                if [ $HEALTH_CHECK_STATUS -ne 0 ]; then
+                  echo "Health check failed"
+                fi
+                if [ $LOG_CHECK_STATUS -ne 0 ]; then
+                  echo "Log check found issues"
+                fi
+              fi
+            fi
 
-            echo "Deployment completed successfully"
-            echo "Deploy type: $DEPLOY_TYPE"
-            echo "Admin tag: $ADMIN_TAG"
-            echo "Client tag: $CLIENT_TAG"
-            echo "Placeholder tag: $PLACEHOLDER_TAG"
+            # 7.1 If everything is OK - cleanup images
+            if [ "$CHECK_FAILED" = false ]; then
+              DEPLOY_SUCCESS=true
+              echo "Deployment successful, cleaning up old images..."
+              make cleanup-images
+            else
+              # 7.2 If something is wrong - rollback
+              echo "Deployment check failed, rolling back..."
+              DEPLOY_SUCCESS=false
+              exit 1
+            fi

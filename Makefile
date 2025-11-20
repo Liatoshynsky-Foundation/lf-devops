@@ -1,4 +1,4 @@
-.PHONY: help install up down restart logs ps status clean encrypt decrypt edit check-secrets update pull set
+.PHONY: help install up down restart logs ps status clean encrypt decrypt check-secrets pull
 
 # Variables
 COMPOSE_FILE := compose.yaml
@@ -59,9 +59,6 @@ pull: ## Update Docker images
 	docker compose -f $(COMPOSE_FILE) pull
 	@echo "$(GREEN)✓ Images updated$(NC)"
 
-update: pull restart ## Update images and restart services
-	@echo "$(GREEN)✓ Update completed$(NC)"
-
 # ============================================
 # .env file management
 # ============================================
@@ -88,23 +85,6 @@ decrypt: ## Decrypt all .env files (usage: make decrypt [.env])
 	fi; \
 	echo "$(GREEN)✓ Decryption completed$(NC)"
 
-edit: ## Edit .env file (usage: make edit .env)
-	@FILE="$(word 2,$(MAKECMDGOALS))"; \
-	if [ -z "$$FILE" ]; then \
-		echo "$(RED)Error: specify file, e.g. make edit .env$(NC)"; \
-		exit 1; \
-	fi; \
-	$(SCRIPTS_DIR)/edit-env.sh $$FILE
-
-set: ## Set value in .env file (usage: make set .env KEY=value)
-	@FILE="$(word 2,$(MAKECMDGOALS))"; \
-	KEY="$(word 3,$(MAKECMDGOALS))"; \
-	if [ -z "$$FILE" ] || [ -z "$$KEY" ]; then \
-		echo "$(RED)Error: specify file and key=value, e.g. make set .env DATABASE_URL=postgres://...$(NC)"; \
-		exit 1; \
-	fi; \
-	$(SCRIPTS_DIR)/edit-env.sh $$FILE $$KEY
-
 check-secrets: ## Check that all secrets are encrypted
 	@echo "$(GREEN)Checking secret encryption...$(NC)"
 	@$(SCRIPTS_DIR)/check-env-secrets.sh
@@ -120,11 +100,6 @@ clean: ## Stop and remove containers, networks, volumes
 	docker compose -f $(COMPOSE_FILE) down -v --remove-orphans
 	@echo "$(GREEN)✓ Cleanup completed$(NC)"
 
-validate: check-secrets ## Validate configuration before deployment
-	@echo "$(GREEN)Validating Docker Compose configuration...$(NC)"
-	@docker compose -f $(COMPOSE_FILE) config > /dev/null
-	@echo "$(GREEN)✓ Configuration is valid$(NC)"
-
 install: ## Check if all dependencies are installed
 	@echo "$(GREEN)Checking dependencies...$(NC)"
 	@command -v docker >/dev/null 2>&1 || { echo "$(RED)Error: Docker is not installed$(NC)"; exit 1; }
@@ -136,22 +111,18 @@ install: ## Check if all dependencies are installed
 # Complex commands
 # ============================================
 
-deploy: validate up ## Deploy project (validate + start)
+deploy: up ## Deploy project (start services)
 	@echo "$(GREEN)✓ Deployment completed$(NC)"
 
-deploy-applications: pull-applications ## Deploy applications with specific tags (usage: make deploy-applications ADMIN_TAG=stage CLIENT_TAG=stage SERVICES=admin,client)
+deploy-applications: pull-applications ## Deploy applications with specific tags
 	@echo "$(GREEN)Deploying applications...$(NC)"
-	@if [ -z "$(SERVICES)" ] || [ "$(SERVICES)" = "all" ]; then \
-		SERVICES_TO_DEPLOY="admin client lf-placeholder"; \
-	else \
-		SERVICES_TO_DEPLOY=$(echo "$(SERVICES)" | sed 's/placeholder/lf-placeholder/g'); \
-	fi; \
-	ADMIN_TAG=$${ADMIN_TAG:-stage} CLIENT_TAG=$${CLIENT_TAG:-stage} PLACEHOLDER_TAG=$${PLACEHOLDER_TAG:-latest} \
-		docker compose -f $(COMPOSE_FILE) stop $$SERVICES_TO_DEPLOY || true; \
-	ADMIN_TAG=$${ADMIN_TAG:-stage} CLIENT_TAG=$${CLIENT_TAG:-stage} PLACEHOLDER_TAG=$${PLACEHOLDER_TAG:-latest} \
-		docker compose -f $(COMPOSE_FILE) rm -f $$SERVICES_TO_DEPLOY || true; \
-	ADMIN_TAG=$${ADMIN_TAG:-stage} CLIENT_TAG=$${CLIENT_TAG:-stage} PLACEHOLDER_TAG=$${PLACEHOLDER_TAG:-latest} \
-		docker compose -f $(COMPOSE_FILE) up -d $$SERVICES_TO_DEPLOY
+	@SERVICES="$$([ -z "$(SERVICES)" ] || [ "$(SERVICES)" = "all" ] && echo "admin client lf-placeholder" || echo "$(SERVICES)" | sed 's/,/ /g' | sed 's/placeholder/lf-placeholder/g')"; \
+	ADMIN_TAG="$${ADMIN_TAG:-latest}" CLIENT_TAG="$${CLIENT_TAG:-latest}" PLACEHOLDER_TAG="$${PLACEHOLDER_TAG:-latest}" \
+		docker compose -f $(COMPOSE_FILE) stop $$SERVICES 2>/dev/null || true; \
+	ADMIN_TAG="$${ADMIN_TAG:-latest}" CLIENT_TAG="$${CLIENT_TAG:-latest}" PLACEHOLDER_TAG="$${PLACEHOLDER_TAG:-latest}" \
+		docker compose -f $(COMPOSE_FILE) rm -f $$SERVICES 2>/dev/null || true; \
+	ADMIN_TAG="$${ADMIN_TAG:-latest}" CLIENT_TAG="$${CLIENT_TAG:-latest}" PLACEHOLDER_TAG="$${PLACEHOLDER_TAG:-latest}" \
+		docker compose -f $(COMPOSE_FILE) up -d $$SERVICES
 	@echo "$(GREEN)✓ Applications deployed$(NC)"
 
 deploy-infrastructure: ## Deploy infrastructure services only
@@ -161,68 +132,57 @@ deploy-infrastructure: ## Deploy infrastructure services only
 	@echo "$(GREEN)✓ Infrastructure deployed$(NC)"
 
 deploy-all: deploy-infrastructure ## Deploy everything (infrastructure + applications)
-	@if [ -n "$(ADMIN_TAG)" ] || [ -n "$(CLIENT_TAG)" ] || [ -n "$(PLACEHOLDER_TAG)" ]; then \
-		$(MAKE) deploy-applications ADMIN_TAG="$${ADMIN_TAG:-stage}" CLIENT_TAG="$${CLIENT_TAG:-stage}" PLACEHOLDER_TAG="$${PLACEHOLDER_TAG:-latest}"; \
-	else \
-		$(MAKE) deploy-applications; \
-	fi
+	@$(MAKE) deploy-applications ADMIN_TAG="$${ADMIN_TAG:-latest}" CLIENT_TAG="$${CLIENT_TAG:-latest}" PLACEHOLDER_TAG="$${PLACEHOLDER_TAG:-latest}"
 
 pull-applications: ## Pull application images with specific tags
 	@echo "$(GREEN)Pulling application images...$(NC)"
-	@if [ -n "$(ADMIN_TAG)" ]; then \
-		echo "Pulling admin:$(ADMIN_TAG)"; \
-		docker pull ghcr.io/liatoshynsky-foundation/lf-admin:$(ADMIN_TAG) || \
+	@ADMIN_TAG="$${ADMIN_TAG:-latest}"; \
+	CLIENT_TAG="$${CLIENT_TAG:-latest}"; \
+	PLACEHOLDER_TAG="$${PLACEHOLDER_TAG:-latest}"; \
+	echo "Pulling admin:$$ADMIN_TAG"; \
+	docker pull ghcr.io/liatoshynsky-foundation/lf-admin:$$ADMIN_TAG 2>/dev/null || { \
+		echo "Tag $$ADMIN_TAG not found, pulling latest"; \
 		docker pull ghcr.io/liatoshynsky-foundation/lf-admin:latest; \
-		docker tag ghcr.io/liatoshynsky-foundation/lf-admin:$(ADMIN_TAG) ghcr.io/liatoshynsky-foundation/lf-admin:latest 2>/dev/null || \
-		docker tag ghcr.io/liatoshynsky-foundation/lf-admin:latest ghcr.io/liatoshynsky-foundation/lf-admin:latest; \
-	fi
-	@if [ -n "$(CLIENT_TAG)" ]; then \
-		echo "Pulling client:$(CLIENT_TAG)"; \
-		docker pull ghcr.io/liatoshynsky-foundation/lf-client:$(CLIENT_TAG) || \
+		docker tag ghcr.io/liatoshynsky-foundation/lf-admin:latest ghcr.io/liatoshynsky-foundation/lf-admin:$$ADMIN_TAG; \
+	}; \
+	echo "Pulling client:$$CLIENT_TAG"; \
+	docker pull ghcr.io/liatoshynsky-foundation/lf-client:$$CLIENT_TAG 2>/dev/null || { \
+		echo "Tag $$CLIENT_TAG not found, pulling latest"; \
 		docker pull ghcr.io/liatoshynsky-foundation/lf-client:latest; \
-		docker tag ghcr.io/liatoshynsky-foundation/lf-client:$(CLIENT_TAG) ghcr.io/liatoshynsky-foundation/lf-client:latest 2>/dev/null || \
-		docker tag ghcr.io/liatoshynsky-foundation/lf-client:latest ghcr.io/liatoshynsky-foundation/lf-client:latest; \
-	fi
-	@if [ -n "$(PLACEHOLDER_TAG)" ]; then \
-		echo "Pulling placeholder:$(PLACEHOLDER_TAG)"; \
-		docker pull ghcr.io/liatoshynsky-foundation/lf-placeholder:$(PLACEHOLDER_TAG) || \
+		docker tag ghcr.io/liatoshynsky-foundation/lf-client:latest ghcr.io/liatoshynsky-foundation/lf-client:$$CLIENT_TAG; \
+	}; \
+	echo "Pulling placeholder:$$PLACEHOLDER_TAG"; \
+	docker pull ghcr.io/liatoshynsky-foundation/lf-placeholder:$$PLACEHOLDER_TAG 2>/dev/null || { \
+		echo "Tag $$PLACEHOLDER_TAG not found, pulling latest"; \
 		docker pull ghcr.io/liatoshynsky-foundation/lf-placeholder:latest; \
-		docker tag ghcr.io/liatoshynsky-foundation/lf-placeholder:$(PLACEHOLDER_TAG) ghcr.io/liatoshynsky-foundation/lf-placeholder:latest 2>/dev/null || \
-		docker tag ghcr.io/liatoshynsky-foundation/lf-placeholder:latest ghcr.io/liatoshynsky-foundation/lf-placeholder:latest; \
-	fi
+		docker tag ghcr.io/liatoshynsky-foundation/lf-placeholder:latest ghcr.io/liatoshynsky-foundation/lf-placeholder:$$PLACEHOLDER_TAG; \
+	}
 	@echo "$(GREEN)✓ Application images pulled$(NC)"
 
 health-check: ## Perform health checks for services
 	@echo "$(GREEN)Performing health checks...$(NC)"
-	@for service in admin client lf-placeholder; do \
-		case $$service in \
-			admin) \
-				URL="http://localhost:3001/" \
-				CONTAINER="lf-admin" \
-				;; \
-			client) \
-				URL="http://localhost:3000/en" \
-				CONTAINER="lf-client" \
-				;; \
-			lf-placeholder) \
-				URL="http://localhost/" \
-				CONTAINER="lf-placeholder" \
-				;; \
-		esac; \
-		for i in 1 2 3 4 5; do \
-			if docker exec $$CONTAINER wget -q -O- $$URL >/dev/null 2>&1; then \
-				echo "$(GREEN)✓ $$service health check passed (attempt $$i)$(NC)"; \
-				break; \
-			else \
-				echo "$(YELLOW)$$service health check failed (attempt $$i)$(NC)"; \
-				if [ $$i -eq 5 ]; then \
-					echo "$(RED)✗ $$service health check failed after 5 attempts$(NC)"; \
-					exit 1; \
-				fi; \
-				sleep 10; \
-			fi; \
-		done; \
-	done
+	@echo "$(YELLOW)Waiting 15 seconds for admin...$(NC)" && sleep 15 && \
+		docker exec lf-admin sh -c "wget -q -O- http://localhost:3001/ >/dev/null 2>&1 || curl -sf http://localhost:3001/ >/dev/null 2>&1" && \
+		echo "$(GREEN)✓ admin health check passed$(NC)" || { \
+			echo "$(RED)✗ admin health check failed$(NC)"; \
+			docker logs --tail 30 lf-admin 2>&1 || true; \
+			exit 1; \
+		}
+	@echo "$(YELLOW)Waiting 45 seconds for client...$(NC)" && sleep 45 && \
+		docker exec lf-client sh -c "wget -q -O- http://localhost:3000/en >/dev/null 2>&1 || curl -sf http://localhost:3000/en >/dev/null 2>&1" && \
+		echo "$(GREEN)✓ client health check passed$(NC)" || { \
+			echo "$(RED)✗ client health check failed$(NC)"; \
+			docker logs --tail 50 lf-client 2>&1 || true; \
+			docker exec lf-client env | grep -E "MONGO_" || true; \
+			exit 1; \
+		}
+	@echo "$(YELLOW)Waiting 10 seconds for placeholder...$(NC)" && sleep 10 && \
+		docker exec lf-placeholder sh -c "wget -q -O- http://localhost/ >/dev/null 2>&1 || curl -sf http://localhost/ >/dev/null 2>&1" && \
+		echo "$(GREEN)✓ placeholder health check passed$(NC)" || { \
+			echo "$(RED)✗ placeholder health check failed$(NC)"; \
+			docker logs --tail 30 lf-placeholder 2>&1 || true; \
+			exit 1; \
+		}
 	@echo "$(GREEN)✓ All health checks passed$(NC)"
 
 check-logs: ## Check logs for errors
@@ -240,8 +200,6 @@ cleanup-images: ## Clean up old Docker images
 	@echo "$(GREEN)Cleaning up old images...$(NC)"
 	@docker image prune -f
 	@echo "$(GREEN)✓ Cleanup completed$(NC)"
-
-rebuild: down up ## Rebuild and start services
 
 # Prevent Make from trying to build files with these names
 %:
