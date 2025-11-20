@@ -85,13 +85,15 @@ jobs:
 
             cd "$DEPLOY_PATH"
 
+            # Update git without requiring write permissions to .git/objects
+            # Use fetch + reset instead of pull to avoid writing new objects
             if [ -d ".git" ]; then
-              sudo chown -R $(whoami):$(whoami) .git || true
-              chmod -R u+w .git || true
+              CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+              git fetch origin "$CURRENT_BRANCH" || git fetch origin
+              git reset --hard "origin/$CURRENT_BRANCH" 2>/dev/null || git reset --hard "origin/main" || git reset --hard HEAD
             fi
 
-            # Update git and decrypt env files
-            git pull
+            # Decrypt env files
             make decrypt
 
             # Login to GHCR for application deployments
