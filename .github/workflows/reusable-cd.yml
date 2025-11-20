@@ -151,13 +151,26 @@ jobs:
             echo "tag=latest" >> $GITHUB_OUTPUT
           fi
 
+      - name: Set Azure image tag
+        if: inputs.azure-registry != ''
+        id: azure-tag
+        env:
+          AZURE_USERNAME: ${{ secrets.azure-username }}
+        run: |
+          # Remove trailing slash from registry URL if present
+          REGISTRY="${{ inputs.azure-registry }}"
+          REGISTRY="${REGISTRY%/}"
+          # Format: registry/username/image:sha
+          echo "tag=${REGISTRY}/${AZURE_USERNAME}/${{ inputs.azure-image-name }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+        shell: bash
+
       - name: Build and push container image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            ${{ inputs.azure-registry != '' && format('{0}/{1}/{2}:{3}', inputs.azure-registry, secrets.azure-username, inputs.azure-image-name, github.sha) || '' }}
+            ${{ steps.azure-tag.outputs.tag }}
             ghcr.io/${{ env.REPO_OWNER_LOWER }}/${{ inputs.project-name }}:${{ github.sha }}
             ghcr.io/${{ env.REPO_OWNER_LOWER }}/${{ inputs.project-name }}:${{ steps.set-tag.outputs.tag }}
           file: ./Dockerfile
@@ -174,6 +187,16 @@ jobs:
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
 
     steps:
+      - name: Set Azure registry image
+        id: azure-image
+        run: |
+          REGISTRY="${{ inputs.azure-registry }}"
+          REGISTRY="${REGISTRY%/}"
+          echo "image=${REGISTRY}/${{ secrets.azure-username }}/${{ inputs.azure-image-name }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+        shell: bash
+        env:
+          AZURE_USERNAME: ${{ secrets.azure-username }}
+
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
@@ -181,7 +204,7 @@ jobs:
           app-name: ${{ inputs.azure-app-name }}
           slot-name: ${{ inputs.azure-slot-name }}
           publish-profile: ${{ secrets.azure-publish-profile }}
-          images: ${{ inputs.azure-registry }}/${{ secrets.azure-username }}/${{ inputs.azure-image-name }}:${{ github.sha }}
+          images: ${{ steps.azure-image.outputs.image }}
 
   deploy-azure-qa:
     name: Deploy to Azure Web App (QA)
@@ -193,6 +216,16 @@ jobs:
       url: ${{ steps.deploy-to-qa-webapp.outputs.webapp-url }}
 
     steps:
+      - name: Set Azure QA registry image
+        id: azure-qa-image
+        run: |
+          REGISTRY="${{ inputs.azure-registry }}"
+          REGISTRY="${REGISTRY%/}"
+          echo "image=${REGISTRY}/${{ secrets.azure-qa-username }}/${{ inputs.azure-image-name }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+        shell: bash
+        env:
+          AZURE_QA_USERNAME: ${{ secrets.azure-qa-username }}
+
       - name: Deploy to Azure Web App (QA)
         id: deploy-to-qa-webapp
         uses: azure/webapps-deploy@v3
@@ -200,7 +233,7 @@ jobs:
           app-name: ${{ inputs.azure-qa-app-name }}
           slot-name: "production"
           publish-profile: ${{ secrets.azure-qa-publish-profile }}
-          images: ${{ inputs.azure-registry }}/${{ secrets.azure-qa-username }}/${{ inputs.azure-image-name }}:${{ github.sha }}
+          images: ${{ steps.azure-qa-image.outputs.image }}
 
   deploy-vps:
     name: Deploy to VPS
