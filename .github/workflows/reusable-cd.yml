@@ -157,8 +157,10 @@ jobs:
         env:
           AZURE_USERNAME: ${{ secrets.azure-username }}
         run: |
-          # Remove trailing slash from registry URL if present
+          # Remove protocol (https://) and trailing slash from registry URL
           REGISTRY="${{ inputs.azure-registry }}"
+          REGISTRY="${REGISTRY#https://}"
+          REGISTRY="${REGISTRY#http://}"
           REGISTRY="${REGISTRY%/}"
           # Format: registry/username/image:sha
           echo "tag=${REGISTRY}/${AZURE_USERNAME}/${{ inputs.azure-image-name }}:${{ github.sha }}" >> $GITHUB_OUTPUT
@@ -190,9 +192,12 @@ jobs:
       - name: Set Azure registry image
         id: azure-image
         run: |
+          # Remove protocol (https://) and trailing slash from registry URL
           REGISTRY="${{ inputs.azure-registry }}"
+          REGISTRY="${REGISTRY#https://}"
+          REGISTRY="${REGISTRY#http://}"
           REGISTRY="${REGISTRY%/}"
-          echo "image=${REGISTRY}/${{ secrets.azure-username }}/${{ inputs.azure-image-name }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "image=${REGISTRY}/${AZURE_USERNAME}/${{ inputs.azure-image-name }}:${{ github.sha }}" >> $GITHUB_OUTPUT
         shell: bash
         env:
           AZURE_USERNAME: ${{ secrets.azure-username }}
@@ -219,9 +224,12 @@ jobs:
       - name: Set Azure QA registry image
         id: azure-qa-image
         run: |
+          # Remove protocol (https://) and trailing slash from registry URL
           REGISTRY="${{ inputs.azure-registry }}"
+          REGISTRY="${REGISTRY#https://}"
+          REGISTRY="${REGISTRY#http://}"
           REGISTRY="${REGISTRY%/}"
-          echo "image=${REGISTRY}/${{ secrets.azure-qa-username }}/${{ inputs.azure-image-name }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "image=${REGISTRY}/${AZURE_QA_USERNAME}/${{ inputs.azure-image-name }}:${{ github.sha }}" >> $GITHUB_OUTPUT
         shell: bash
         env:
           AZURE_QA_USERNAME: ${{ secrets.azure-qa-username }}
