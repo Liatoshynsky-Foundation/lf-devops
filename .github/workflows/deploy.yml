@@ -105,7 +105,7 @@ jobs:
             if [ "$DEPLOY_TYPE" = "infrastructure" ]; then
               make deploy-infrastructure
             elif [ "$DEPLOY_TYPE" = "applications" ]; then
-              # Deploy ap(?<==).*plications with specific tags and services
+              # Deploy applications with specific tags and services
               make deploy-applications ADMIN_TAG="$ADMIN_TAG" CLIENT_TAG="$CLIENT_TAG" PLACEHOLDER_TAG="$PLACEHOLDER_TAG" SERVICES="$SERVICES"
 
               sleep 15
