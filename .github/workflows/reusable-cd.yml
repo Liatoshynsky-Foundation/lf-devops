@@ -96,9 +96,6 @@ on:
         description: "VPS deployment URL for environment output"
         required: false
         type: string
-    secrets:
-      GITHUB_TOKEN:
-        required: true
 
 jobs:
   build:
