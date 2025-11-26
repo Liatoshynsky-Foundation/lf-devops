@@ -157,7 +157,7 @@ jobs:
               make check-logs
               LOG_CHECK_STATUS=$?
               set -e
-              
+
               if [ $HEALTH_CHECK_STATUS -ne 0 ] || [ $LOG_CHECK_STATUS -ne 0 ]; then
                 CHECK_FAILED=true
                 if [ $HEALTH_CHECK_STATUS -ne 0 ]; then
