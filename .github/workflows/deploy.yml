@@ -15,15 +15,15 @@ on:
       admin-tag:
         description: "Admin image tag (stage/latest/SHA)"
         required: false
-        default: "latest"
+        default: "stage"
       client-tag:
         description: "Client image tag (stage/latest/SHA)"
         required: false
-        default: "latest"
+        default: "stage"
       placeholder-tag:
         description: "Placeholder image tag"
         required: false
-        default: "latest"
+        default: "stage"
       services:
         description: "Comma-separated services to deploy (admin,client,placeholder,all)"
         required: false
@@ -40,9 +40,9 @@ jobs:
       packages: read
     env:
       DEPLOY_TYPE: ${{ github.event.inputs.deploy-type || 'applications' }}
-      ADMIN_TAG: ${{ github.event.inputs.admin-tag || github.event.client_payload.tag || 'latest' }}
-      CLIENT_TAG: ${{ github.event.inputs.client-tag || github.event.client_payload.tag || 'latest' }}
-      PLACEHOLDER_TAG: ${{ github.event.inputs.placeholder-tag || 'latest' }}
+      ADMIN_TAG: ${{ github.event.inputs.admin-tag || github.event.client_payload.tag || 'stage' }}
+      CLIENT_TAG: ${{ github.event.inputs.client-tag || github.event.client_payload.tag || 'stage' }}
+      PLACEHOLDER_TAG: ${{ github.event.inputs.placeholder-tag || 'stage' }}
       SERVICES: ${{ github.event.inputs.services || 'all' }}
 
     steps:
