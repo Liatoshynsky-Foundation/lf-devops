@@ -22,6 +22,11 @@ on:
         required: false
         type: boolean
         default: true
+      run-graphql-generate:
+        description: "Whether to run GraphQL codegen"
+        required: false
+        type: boolean
+        default: false  
       run-tests:
         description: "Whether to run tests"
         required: false
@@ -90,6 +95,7 @@ jobs:
         run: npm ci
        
       - name: Generate graphql types
+        if: inputs.run-graphql-generate
         run: npm run generate  
   
       - name: Run TypeScript type check
@@ -116,7 +122,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
         
-      - name: Generate graphql types
+      - name: Generate graphql types 
+        if: inputs.run-graphql-generate
         run: npm run generate  
 
       - name: Build project
@@ -181,6 +188,7 @@ jobs:
         run: npm ci
        
       - name: Generate graphql types
+        if: inputs.run-graphql-generate
         run: npm run generate    
 
       - name: Run Tests
