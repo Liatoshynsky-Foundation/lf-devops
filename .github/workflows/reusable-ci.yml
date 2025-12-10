@@ -88,7 +88,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
+       
+      - name: Generate graphql types
+        run: npm run generate  
+  
       - name: Run TypeScript type check
         run: npx tsc --noEmit
 
@@ -176,6 +179,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+       
+      - name: Generate graphql types
+        run: npm run generate    
 
       - name: Run Tests
         env:
