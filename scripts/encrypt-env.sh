@@ -56,7 +56,7 @@ encrypt_file() {
             local encrypted=$(encrypt_value "$value" "$password")
             if [ $? -eq 0 ]; then
                 echo "${key}=${encrypted}" >> "$temp_output"
-                ((encrypted_count++))
+                ((++encrypted_count))
             else
                 echo -e "${RED}✗ Failed to encrypt: $key${NC}" >&2
                 rm -f "$temp_output"
@@ -84,7 +84,7 @@ if [ $# -eq 0 ]; then
     for file in "${ENV_FILES[@]}"; do
         if [ -f "$file" ]; then
             if encrypt_file "$file" "$PASSWORD"; then
-                ((encrypted++))
+                ((++encrypted))
             fi
         else
             echo -e "${YELLOW}Warning: $file not found, skipping${NC}" >&2
